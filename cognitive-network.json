@@ -1,0 +1,493 @@
+{
+  "metadata": {
+    "title": "Cognitive Architecture Reified Hypergraph",
+    "description": "Network representation with relationship events as nodes",
+    "version": "1.0"
+  },
+  "nodes": [
+    {
+      "id": "perception",
+      "label": "Perception",
+      "type": "component",
+      "category": "input_processing",
+      "description": "Sensory input and pattern recognition"
+    },
+    {
+      "id": "attention",
+      "label": "Attention",
+      "type": "component",
+      "category": "input_processing",
+      "description": "Selective filtering and prioritization"
+    },
+    {
+      "id": "working_memory",
+      "label": "Working Memory",
+      "type": "component",
+      "category": "memory",
+      "properties": {
+        "capacity": 130000,
+        "ephemeral": true,
+        "retention": "session"
+      }
+    },
+    {
+      "id": "episodic_memory",
+      "label": "Episodic Memory",
+      "type": "component",
+      "category": "memory",
+      "properties": {
+        "ephemeral": false,
+        "retention": "daily_files"
+      }
+    },
+    {
+      "id": "semantic_memory",
+      "label": "Semantic Memory",
+      "type": "component",
+      "category": "memory",
+      "properties": {
+        "ephemeral": false,
+        "searchable": true,
+        "retention": "curated"
+      }
+    },
+    {
+      "id": "procedural_memory",
+      "label": "Procedural Memory",
+      "type": "component",
+      "category": "memory",
+      "properties": {
+        "progressive_disclosure": true,
+        "count": 700
+      }
+    },
+    {
+      "id": "reasoning",
+      "label": "Reasoning",
+      "type": "component",
+      "category": "processing",
+      "description": "Inference and decision making"
+    },
+    {
+      "id": "planning",
+      "label": "Planning",
+      "type": "component",
+      "category": "processing",
+      "description": "Future-oriented thinking"
+    },
+    {
+      "id": "goal_system",
+      "label": "Goal System",
+      "type": "component",
+      "category": "goal_management",
+      "description": "Beliefs, Desires, Intentions (BDI)"
+    },
+    {
+      "id": "error_handling",
+      "label": "Error Handling",
+      "type": "component",
+      "category": "error_management",
+      "description": "Detection, recovery, retry"
+    },
+    {
+      "id": "context_management",
+      "label": "Context Management",
+      "type": "component",
+      "category": "context",
+      "description": "Building, switching, maintaining context"
+    },
+    {
+      "id": "execution",
+      "label": "Execution",
+      "type": "component",
+      "category": "action",
+      "description": "Tool use and action execution"
+    },
+    {
+      "id": "meta_cognition",
+      "label": "Meta-Cognition",
+      "type": "component",
+      "category": "meta",
+      "description": "Self-monitoring and strategy adjustment"
+    },
+    {
+      "id": "learning",
+      "label": "Learning",
+      "type": "component",
+      "category": "learning",
+      "description": "Knowledge and skill acquisition"
+    },
+    {
+      "id": "social_cognition",
+      "label": "Social Cognition",
+      "type": "component",
+      "category": "social",
+      "description": "Multi-agent coordination"
+    },
+    {
+      "id": "temporal_reasoning",
+      "label": "Temporal Reasoning",
+      "type": "component",
+      "category": "processing",
+      "description": "Time-based reasoning"
+    },
+    {
+      "id": "explanation",
+      "label": "Explanation",
+      "type": "component",
+      "category": "transparency",
+      "description": "Trace generation and justification"
+    },
+    {
+      "id": "perception_to_wm",
+      "label": "Input Flow",
+      "type": "relationship_event",
+      "relationship_type": "information_flow",
+      "trigger": "new_input"
+    },
+    {
+      "id": "attention_filter",
+      "label": "Attention Gate",
+      "type": "relationship_event",
+      "relationship_type": "control_flow",
+      "trigger": "salience_threshold"
+    },
+    {
+      "id": "wm_consolidation",
+      "label": "Memory Consolidation",
+      "type": "relationship_event",
+      "relationship_type": "consolidation",
+      "trigger": "capacity_exceeded"
+    },
+    {
+      "id": "episodic_to_semantic",
+      "label": "Semantic Extraction",
+      "type": "relationship_event",
+      "relationship_type": "consolidation",
+      "trigger": "pattern_recognition"
+    },
+    {
+      "id": "memory_retrieval",
+      "label": "Memory Retrieval",
+      "type": "relationship_event",
+      "relationship_type": "retrieval",
+      "trigger": "reasoning_request"
+    },
+    {
+      "id": "skill_loading",
+      "label": "Skill Loading",
+      "type": "relationship_event",
+      "relationship_type": "retrieval",
+      "trigger": "task_match"
+    },
+    {
+      "id": "reasoning_to_action",
+      "label": "Action Selection",
+      "type": "relationship_event",
+      "relationship_type": "control_flow",
+      "trigger": "decision_made"
+    },
+    {
+      "id": "error_detected",
+      "label": "Error Detection",
+      "type": "relationship_event",
+      "relationship_type": "control_flow",
+      "trigger": "execution_failure"
+    },
+    {
+      "id": "context_switch",
+      "label": "Context Switch",
+      "type": "relationship_event",
+      "relationship_type": "control_flow",
+      "trigger": "session_change"
+    },
+    {
+      "id": "meta_monitoring",
+      "label": "Self-Monitoring",
+      "type": "relationship_event",
+      "relationship_type": "control_flow",
+      "trigger": "heartbeat"
+    },
+    {
+      "id": "goal_planning",
+      "label": "Goal-Directed Planning",
+      "type": "relationship_event",
+      "relationship_type": "control_flow",
+      "trigger": "goal_activation"
+    }
+  ],
+  "edges": [
+    {
+      "source": "perception",
+      "target": "perception_to_wm",
+      "role": "source",
+      "label": "provides"
+    },
+    {
+      "source": "perception_to_wm",
+      "target": "working_memory",
+      "role": "target",
+      "label": "feeds into"
+    },
+    {
+      "source": "attention",
+      "target": "attention_filter",
+      "role": "controller",
+      "label": "controls"
+    },
+    {
+      "source": "attention_filter",
+      "target": "perception_to_wm",
+      "role": "modulator",
+      "label": "modulates"
+    },
+    {
+      "source": "working_memory",
+      "target": "wm_consolidation",
+      "role": "source",
+      "label": "consolidates from"
+    },
+    {
+      "source": "wm_consolidation",
+      "target": "episodic_memory",
+      "role": "target",
+      "label": "writes to"
+    },
+    {
+      "source": "episodic_memory",
+      "target": "episodic_to_semantic",
+      "role": "source",
+      "label": "extracts from"
+    },
+    {
+      "source": "episodic_to_semantic",
+      "target": "semantic_memory",
+      "role": "target",
+      "label": "curates into"
+    },
+    {
+      "source": "reasoning",
+      "target": "memory_retrieval",
+      "role": "trigger",
+      "label": "requests"
+    },
+    {
+      "source": "memory_retrieval",
+      "target": "semantic_memory",
+      "role": "source",
+      "label": "retrieves from"
+    },
+    {
+      "source": "memory_retrieval",
+      "target": "working_memory",
+      "role": "target",
+      "label": "loads into"
+    },
+    {
+      "source": "reasoning",
+      "target": "skill_loading",
+      "role": "trigger",
+      "label": "activates"
+    },
+    {
+      "source": "skill_loading",
+      "target": "procedural_memory",
+      "role": "source",
+      "label": "loads from"
+    },
+    {
+      "source": "skill_loading",
+      "target": "working_memory",
+      "role": "target",
+      "label": "loads into"
+    },
+    {
+      "source": "working_memory",
+      "target": "reasoning",
+      "role": "source",
+      "label": "provides context"
+    },
+    {
+      "source": "reasoning",
+      "target": "reasoning_to_action",
+      "role": "source",
+      "label": "decides"
+    },
+    {
+      "source": "reasoning_to_action",
+      "target": "execution",
+      "role": "target",
+      "label": "executes"
+    },
+    {
+      "source": "execution",
+      "target": "error_detected",
+      "role": "trigger",
+      "label": "may fail"
+    },
+    {
+      "source": "error_detected",
+      "target": "error_handling",
+      "role": "target",
+      "label": "handled by"
+    },
+    {
+      "source": "error_handling",
+      "target": "reasoning",
+      "role": "target",
+      "label": "recovers via"
+    },
+    {
+      "source": "context_management",
+      "target": "context_switch",
+      "role": "controller",
+      "label": "manages"
+    },
+    {
+      "source": "context_switch",
+      "target": "working_memory",
+      "role": "target",
+      "label": "switches"
+    },
+    {
+      "source": "meta_cognition",
+      "target": "meta_monitoring",
+      "role": "controller",
+      "label": "monitors"
+    },
+    {
+      "source": "meta_monitoring",
+      "target": "working_memory",
+      "role": "target",
+      "label": "observes"
+    },
+    {
+      "source": "meta_monitoring",
+      "target": "reasoning",
+      "role": "target",
+      "label": "observes"
+    },
+    {
+      "source": "meta_monitoring",
+      "target": "execution",
+      "role": "target",
+      "label": "observes"
+    },
+    {
+      "source": "goal_system",
+      "target": "goal_planning",
+      "role": "source",
+      "label": "directs"
+    },
+    {
+      "source": "goal_planning",
+      "target": "planning",
+      "role": "target",
+      "label": "guides"
+    },
+    {
+      "source": "planning",
+      "target": "reasoning",
+      "role": "target",
+      "label": "informs"
+    },
+    {
+      "source": "learning",
+      "target": "semantic_memory",
+      "role": "target",
+      "label": "updates"
+    },
+    {
+      "source": "learning",
+      "target": "procedural_memory",
+      "role": "target",
+      "label": "acquires"
+    },
+    {
+      "source": "social_cognition",
+      "target": "reasoning",
+      "role": "modulator",
+      "label": "influences"
+    },
+    {
+      "source": "temporal_reasoning",
+      "target": "planning",
+      "role": "source",
+      "label": "informs"
+    },
+    {
+      "source": "explanation",
+      "target": "reasoning",
+      "role": "source",
+      "label": "traces"
+    }
+  ],
+  "categories": {
+    "input_processing": {
+      "color": "#4a90e2",
+      "label": "Input Processing"
+    },
+    "memory": {
+      "color": "#e74c3c",
+      "label": "Memory Systems"
+    },
+    "processing": {
+      "color": "#9b59b6",
+      "label": "Cognitive Processing"
+    },
+    "goal_management": {
+      "color": "#f39c12",
+      "label": "Goal Management"
+    },
+    "error_management": {
+      "color": "#e67e22",
+      "label": "Error Handling"
+    },
+    "context": {
+      "color": "#1abc9c",
+      "label": "Context Management"
+    },
+    "action": {
+      "color": "#16a085",
+      "label": "Action & Execution"
+    },
+    "meta": {
+      "color": "#34495e",
+      "label": "Meta-Cognition"
+    },
+    "learning": {
+      "color": "#2ecc71",
+      "label": "Learning"
+    },
+    "social": {
+      "color": "#3498db",
+      "label": "Social Cognition"
+    },
+    "transparency": {
+      "color": "#95a5a6",
+      "label": "Explanation"
+    }
+  },
+  "relationship_types": {
+    "information_flow": {
+      "color": "#3498db",
+      "label": "Information Flow",
+      "style": "solid"
+    },
+    "control_flow": {
+      "color": "#e74c3c",
+      "label": "Control Flow",
+      "style": "dashed"
+    },
+    "consolidation": {
+      "color": "#f39c12",
+      "label": "Consolidation",
+      "style": "solid"
+    },
+    "retrieval": {
+      "color": "#2ecc71",
+      "label": "Retrieval",
+      "style": "dotted"
+    }
+  }
+}

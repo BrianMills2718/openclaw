@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cognitive Architecture - Reified Hypergraph</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0a0e14;
+            color: #e6e6e6;
+            overflow: hidden;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+        }
+
+        #sidebar {
+            width: 300px;
+            background: #1a1f2e;
+            padding: 20px;
+            overflow-y: auto;
+            border-right: 2px solid #2d3548;
+        }
+
+        #graph {
+            flex: 1;
+            position: relative;
+        }
+
+        h1 {
+            font-size: 1.5em;
+            margin-bottom: 10px;
+            color: #ff6b6b;
+        }
+
+        h2 {
+            font-size: 1.2em;
+            margin: 20px 0 10px 0;
+            color: #4a90e2;
+        }
+
+        .filter-group {
+            margin-bottom: 20px;
+        }
+
+        .filter-label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.9em;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            margin: 6px 0;
+        }
+
+        .checkbox-item input {
+            margin-right: 8px;
+        }
+
+        .checkbox-item label {
+            font-size: 0.9em;
+            cursor: pointer;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            font-size: 0.85em;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+
+        .legend-color.relationship {
+            border-radius: 0;
+        }
+
+        #detail-panel {
+            background: #242938;
+            border: 1px solid #2d3548;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 20px;
+        }
+
+        #detail-panel h3 {
+            color: #ff6b6b;
+            margin-bottom: 10px;
+        }
+
+        #detail-panel p {
+            font-size: 0.85em;
+            line-height: 1.6;
+            margin: 5px 0;
+        }
+
+        .node {
+            cursor: pointer;
+            stroke: #fff;
+            stroke-width: 2px;
+        }
+
+        .node.component {
+            r: 12;
+        }
+
+        .node.relationship {
+            r: 8;
+        }
+
+        .node.selected {
+            stroke: #ff6b6b;
+            stroke-width: 3px;
+        }
+
+        .link {
+            stroke-opacity: 0.6;
+            stroke-width: 2px;
+        }
+
+        .link-label {
+            font-size: 10px;
+            fill: #888;
+            pointer-events: none;
+        }
+
+        .node-label {
+            font-size: 11px;
+            fill: #e6e6e6;
+            pointer-events: none;
+            text-anchor: middle;
+            dominant-baseline: middle;
+        }
+
+        .controls {
+            margin-bottom: 20px;
+        }
+
+        button {
+            background: #2d3548;
+            color: #e6e6e6;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px 5px 5px 0;
+            font-size: 0.9em;
+        }
+
+        button:hover {
+            background: #3d4558;
+        }
+
+        button.active {
+            background: #ff6b6b;
+        }
+
+        #stats {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="sidebar">
+            <h1>🦞 Cognitive Network</h1>
+            <p style="font-size: 0.85em; color: #888; margin-bottom: 20px;">
+                Reified hypergraph: relationships as nodes
+            </p>
+
+            <div class="controls">
+                <button onclick="resetSimulation()">Reset Layout</button>
+                <button onclick="toggleLabels()">Toggle Labels</button>
+            </div>
+
+            <h2>Filter by Relationship Type</h2>
+            <div class="filter-group" id="relationship-filters">
+            </div>
+
+            <h2>Legend - Components</h2>
+            <div id="component-legend"></div>
+
+            <h2>Legend - Relationships</h2>
+            <div id="relationship-legend"></div>
+
+            <div id="detail-panel" style="display: none;">
+                <h3 id="detail-title"></h3>
+                <p id="detail-description"></p>
+                <div id="detail-properties"></div>
+            </div>
+
+            <div id="stats"></div>
+        </div>
+
+        <div id="graph"></div>
+    </div>
+
+    <script>
+        let graphData, svg, g, simulation, node, link, linkLabel, nodeLabel;
+        let showLabels = true;
+        let selectedNode = null;
+        let activeRelationshipTypes = new Set();
+
+        // Load data and initialize
+        fetch('cognitive-network.json')
+            .then(response => response.json())
+            .then(data => {
+                graphData = data;
+                initializeFilters();
+                initializeLegends();
+                initializeGraph();
+                updateStats();
+            });
+
+        function initializeFilters() {
+            const filterContainer = document.getElementById('relationship-filters');
+            Object.entries(graphData.relationship_types).forEach(([key, type]) => {
+                activeRelationshipTypes.add(key);
+                const div = document.createElement('div');
+                div.className = 'checkbox-item';
+                div.innerHTML = `
+                    <input type="checkbox" id="filter-${key}" checked
+                           onchange="toggleRelationshipType('${key}')">
+                    <label for="filter-${key}">${type.label}</label>
+                `;
+                filterContainer.appendChild(div);
+            });
+        }
+
+        function initializeLegends() {
+            const componentLegend = document.getElementById('component-legend');
+            Object.entries(graphData.categories).forEach(([key, cat]) => {
+                const div = document.createElement('div');
+                div.className = 'legend-item';
+                div.innerHTML = `
+                    <div class="legend-color" style="background: ${cat.color}"></div>
+                    <span>${cat.label}</span>
+                `;
+                componentLegend.appendChild(div);
+            });
+
+            const relationshipLegend = document.getElementById('relationship-legend');
+            Object.entries(graphData.relationship_types).forEach(([key, type]) => {
+                const div = document.createElement('div');
+                div.className = 'legend-item';
+                div.innerHTML = `
+                    <div class="legend-color relationship"
+                         style="background: ${type.color}; width: 30px; height: 3px;"></div>
+                    <span>${type.label}</span>
+                `;
+                relationshipLegend.appendChild(div);
+            });
+        }
+
+        function initializeGraph() {
+            const width = window.innerWidth - 300;
+            const height = window.innerHeight;
+
+            svg = d3.select('#graph')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+
+            // Add zoom
+            const zoom = d3.zoom()
+                .scaleExtent([0.1, 4])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
+
+            svg.call(zoom);
+
+            g = svg.append('g');
+
+            // Create force simulation
+            simulation = d3.forceSimulation()
+                .force('link', d3.forceLink().id(d => d.id).distance(100))
+                .force('charge', d3.forceManyBody().strength(-300))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(30));
+
+            updateGraph();
+        }
+
+        function updateGraph() {
+            // Filter edges based on active relationship types
+            const filteredEdges = graphData.edges.filter(edge => {
+                const targetNode = graphData.nodes.find(n => n.id === edge.target);
+                if (targetNode && targetNode.type === 'relationship_event') {
+                    return activeRelationshipTypes.has(targetNode.relationship_type);
+                }
+                return true;
+            });
+
+            // Find nodes that are connected
+            const connectedNodeIds = new Set();
+            filteredEdges.forEach(edge => {
+                connectedNodeIds.add(typeof edge.source === 'object' ? edge.source.id : edge.source);
+                connectedNodeIds.add(typeof edge.target === 'object' ? edge.target.id : edge.target);
+            });
+
+            const filteredNodes = graphData.nodes.filter(n => connectedNodeIds.has(n.id));
+
+            // Clear existing
+            g.selectAll('*').remove();
+
+            // Create links
+            link = g.append('g')
+                .selectAll('line')
+                .data(filteredEdges)
+                .join('line')
+                .attr('class', 'link')
+                .attr('stroke', d => {
+                    const targetNode = graphData.nodes.find(n =>
+                        n.id === (typeof d.target === 'object' ? d.target.id : d.target));
+                    if (targetNode && targetNode.type === 'relationship_event') {
+                        return graphData.relationship_types[targetNode.relationship_type]?.color || '#666';
+                    }
+                    return '#666';
+                });
+
+            // Create link labels
+            linkLabel = g.append('g')
+                .selectAll('text')
+                .data(filteredEdges)
+                .join('text')
+                .attr('class', 'link-label')
+                .text(d => d.role)
+                .style('display', showLabels ? 'block' : 'none');
+
+            // Create nodes
+            node = g.append('g')
+                .selectAll('circle')
+                .data(filteredNodes)
+                .join('circle')
+                .attr('class', d => `node ${d.type}`)
+                .attr('r', d => d.type === 'component' ? 12 : 8)
+                .attr('fill', d => {
+                    if (d.type === 'component') {
+                        return graphData.categories[d.category]?.color || '#666';
+                    } else {
+                        return graphData.relationship_types[d.relationship_type]?.color || '#666';
+                    }
+                })
+                .on('click', (event, d) => showDetail(d))
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended));
+
+            // Create node labels
+            nodeLabel = g.append('g')
+                .selectAll('text')
+                .data(filteredNodes)
+                .join('text')
+                .attr('class', 'node-label')
+                .attr('dy', d => d.type === 'component' ? 25 : 18)
+                .text(d => d.label)
+                .style('display', showLabels ? 'block' : 'none');
+
+            // Update simulation
+            simulation.nodes(filteredNodes);
+            simulation.force('link').links(filteredEdges);
+            simulation.alpha(1).restart();
+
+            simulation.on('tick', () => {
+                link
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
+
+                linkLabel
+                    .attr('x', d => (d.source.x + d.target.x) / 2)
+                    .attr('y', d => (d.source.y + d.target.y) / 2);
+
+                node
+                    .attr('cx', d => d.x)
+                    .attr('cy', d => d.y);
+
+                nodeLabel
+                    .attr('x', d => d.x)
+                    .attr('y', d => d.y);
+            });
+        }
+
+        function showDetail(d) {
+            if (selectedNode) {
+                selectedNode.classed('selected', false);
+            }
+
+            selectedNode = d3.selectAll('.node').filter(n => n.id === d.id);
+            selectedNode.classed('selected', true);
+
+            const panel = document.getElementById('detail-panel');
+            panel.style.display = 'block';
+            document.getElementById('detail-title').textContent = d.label;
+            document.getElementById('detail-description').textContent = d.description || '';
+
+            const props = document.getElementById('detail-properties');
+            props.innerHTML = '';
+
+            if (d.properties) {
+                const propsHtml = Object.entries(d.properties)
+                    .map(([key, value]) => `<p><strong>${key}:</strong> ${value}</p>`)
+                    .join('');
+                props.innerHTML = propsHtml;
+            }
+
+            if (d.type === 'relationship_event') {
+                props.innerHTML += `<p><strong>Type:</strong> ${d.relationship_type}</p>`;
+                props.innerHTML += `<p><strong>Trigger:</strong> ${d.trigger}</p>`;
+            }
+        }
+
+        function toggleRelationshipType(type) {
+            if (activeRelationshipTypes.has(type)) {
+                activeRelationshipTypes.delete(type);
+            } else {
+                activeRelationshipTypes.add(type);
+            }
+            updateGraph();
+            updateStats();
+        }
+
+        function toggleLabels() {
+            showLabels = !showLabels;
+            nodeLabel.style('display', showLabels ? 'block' : 'none');
+            linkLabel.style('display', showLabels ? 'block' : 'none');
+        }
+
+        function resetSimulation() {
+            simulation.alpha(1).restart();
+        }
+
+        function updateStats() {
+            const componentCount = graphData.nodes.filter(n => n.type === 'component').length;
+            const relationshipCount = graphData.nodes.filter(n => n.type === 'relationship_event').length;
+            const edgeCount = graphData.edges.length;
+
+            document.getElementById('stats').innerHTML = `
+                <p><strong>Components:</strong> ${componentCount}</p>
+                <p><strong>Relationships:</strong> ${relationshipCount}</p>
+                <p><strong>Edges:</strong> ${edgeCount}</p>
+            `;
+        }
+
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+    </script>
+</body>
+</html>

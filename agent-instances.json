@@ -1,0 +1,407 @@
+{
+  "agents": {
+    "openclaw": {
+      "name": "OpenClaw",
+      "description": "Multi-channel AI assistant gateway with persistent memory",
+      "core": {
+        "perception": {
+          "present": true,
+          "implementation": "Multi-channel (Discord, WhatsApp, Telegram, Slack, Signal)",
+          "notes": "Channel-specific parsing and normalization"
+        },
+        "working_memory": {
+          "present": true,
+          "implementation": "Session context (~130k tokens)",
+          "properties": {
+            "capacity": 130000,
+            "ephemeral": true,
+            "compaction": "automatic"
+          }
+        },
+        "reasoning": {
+          "present": true,
+          "implementation": "LLM inference (Claude Opus 4.5, GPT-5.2)",
+          "properties": {
+            "model_agnostic": true,
+            "thinking_modes": ["high", "low", "none"]
+          }
+        },
+        "action": {
+          "present": true,
+          "implementation": "Tool calls, browser automation, channel actions",
+          "properties": {
+            "tools": ["bash", "read", "write", "browser", "skills"],
+            "streaming": true
+          }
+        }
+      },
+      "extensions": {
+        "episodic_memory": {
+          "present": true,
+          "implementation": "memory/YYYY-MM-DD.md (daily logs)",
+          "properties": {
+            "retention": "infinite",
+            "format": "markdown"
+          }
+        },
+        "semantic_memory": {
+          "present": true,
+          "implementation": "MEMORY.md + vector search",
+          "properties": {
+            "searchable": true,
+            "embeddings": ["local", "openai", "gemini"]
+          }
+        },
+        "procedural_memory": {
+          "present": true,
+          "implementation": "Skills system (ClawdHub)",
+          "properties": {
+            "count": 700,
+            "progressive_disclosure": true
+          }
+        },
+        "attention": {
+          "present": true,
+          "implementation": "requireMention, groupPolicy, DM pairing",
+          "properties": {
+            "filters": ["mention", "allowlist", "activeHours"]
+          }
+        },
+        "goal_management": {
+          "present": true,
+          "implementation": "Loop conditions, early termination",
+          "properties": {
+            "bdi_lite": true
+          }
+        },
+        "error_handling": {
+          "present": true,
+          "implementation": "try/catch/finally, retry with backoff",
+          "properties": {
+            "retry_strategies": ["exponential", "linear", "none"]
+          }
+        },
+        "context_management": {
+          "present": true,
+          "implementation": "Session switching, explicit context flow",
+          "properties": {
+            "scopes": ["per-sender", "per-channel-peer", "main"]
+          }
+        },
+        "meta_cognition": {
+          "present": true,
+          "implementation": "Heartbeat system (30min default)",
+          "properties": {
+            "self_monitoring": true,
+            "session_reset": true
+          }
+        },
+        "social_cognition": {
+          "present": true,
+          "implementation": "Multi-agent routing, coordination",
+          "properties": {
+            "multi_agent": true
+          }
+        },
+        "planning": {
+          "present": true,
+          "implementation": "Multi-turn conversations, heartbeat scheduling",
+          "properties": {
+            "multi_step": true
+          }
+        },
+        "temporal_reasoning": {
+          "present": true,
+          "implementation": "Cron, heartbeat scheduling",
+          "properties": {
+            "scheduling": true
+          }
+        },
+        "learning": {
+          "present": false,
+          "notes": "Uses pre-trained LLM, no online learning"
+        },
+        "explanation": {
+          "present": false,
+          "notes": "Relies on LLM transparency, no explicit trace generation"
+        },
+        "emotion": {
+          "present": false,
+          "notes": "Not applicable for this architecture"
+        },
+        "embodiment": {
+          "present": false,
+          "notes": "Not a physical agent"
+        }
+      },
+      "patterns": ["reactive", "deliberative", "multi-tier-memory"],
+      "unique_features": [
+        "Multi-channel gateway architecture",
+        "Session isolation per sender/channel",
+        "Progressive skill disclosure (700+ skills)",
+        "Heartbeat-based self-monitoring"
+      ]
+    },
+    "claude_web": {
+      "name": "Claude.ai (Web Interface)",
+      "description": "Conversational AI with extended context window",
+      "core": {
+        "perception": {
+          "present": true,
+          "implementation": "Text input only (web interface)",
+          "notes": "Single modality"
+        },
+        "working_memory": {
+          "present": true,
+          "implementation": "Conversation context (200k tokens)",
+          "properties": {
+            "capacity": 200000,
+            "ephemeral": true,
+            "compaction": "none"
+          }
+        },
+        "reasoning": {
+          "present": true,
+          "implementation": "Claude Opus 4.5",
+          "properties": {
+            "thinking_modes": ["extended"]
+          }
+        },
+        "action": {
+          "present": true,
+          "implementation": "Text generation only",
+          "properties": {
+            "tools": [],
+            "streaming": true
+          }
+        }
+      },
+      "extensions": {
+        "episodic_memory": {
+          "present": false,
+          "notes": "Stateless between conversations"
+        },
+        "semantic_memory": {
+          "present": false,
+          "notes": "Relies on pre-training only"
+        },
+        "procedural_memory": {
+          "present": false,
+          "notes": "No skill system"
+        },
+        "attention": {
+          "present": false,
+          "notes": "Processes all input"
+        },
+        "goal_management": {
+          "present": false
+        },
+        "error_handling": {
+          "present": false
+        },
+        "context_management": {
+          "present": false,
+          "notes": "Single conversation context only"
+        },
+        "meta_cognition": {
+          "present": false
+        },
+        "social_cognition": {
+          "present": false
+        },
+        "planning": {
+          "present": true,
+          "implementation": "Multi-turn reasoning",
+          "properties": {
+            "multi_step": true
+          }
+        },
+        "temporal_reasoning": {
+          "present": false
+        },
+        "learning": {
+          "present": false
+        },
+        "explanation": {
+          "present": false
+        },
+        "emotion": {
+          "present": false
+        },
+        "embodiment": {
+          "present": false
+        }
+      },
+      "patterns": ["reactive"],
+      "unique_features": [
+        "Large context window (200k)",
+        "Minimal architecture",
+        "Stateless design"
+      ]
+    },
+    "minimal_agent": {
+      "name": "Minimal Agent (Core Only)",
+      "description": "Theoretical minimal agent with only core components",
+      "core": {
+        "perception": {
+          "present": true,
+          "implementation": "Text input",
+          "notes": "Simplest possible input"
+        },
+        "working_memory": {
+          "present": true,
+          "implementation": "Single message context",
+          "properties": {
+            "capacity": 4000,
+            "ephemeral": true
+          }
+        },
+        "reasoning": {
+          "present": true,
+          "implementation": "Simple LLM call",
+          "properties": {
+            "model": "gpt-3.5-turbo"
+          }
+        },
+        "action": {
+          "present": true,
+          "implementation": "Text output",
+          "properties": {
+            "tools": []
+          }
+        }
+      },
+      "extensions": {
+        "episodic_memory": {"present": false},
+        "semantic_memory": {"present": false},
+        "procedural_memory": {"present": false},
+        "attention": {"present": false},
+        "goal_management": {"present": false},
+        "error_handling": {"present": false},
+        "context_management": {"present": false},
+        "meta_cognition": {"present": false},
+        "social_cognition": {"present": false},
+        "planning": {"present": false},
+        "temporal_reasoning": {"present": false},
+        "learning": {"present": false},
+        "explanation": {"present": false},
+        "emotion": {"present": false},
+        "embodiment": {"present": false}
+      },
+      "patterns": ["reactive"],
+      "unique_features": [
+        "Absolute minimum viable agent",
+        "No persistence",
+        "No extensions"
+      ]
+    },
+    "autogpt": {
+      "name": "AutoGPT",
+      "description": "Autonomous task-executing agent with goal pursuit",
+      "core": {
+        "perception": {
+          "present": true,
+          "implementation": "File system, web scraping, API calls",
+          "notes": "Multi-source input"
+        },
+        "working_memory": {
+          "present": true,
+          "implementation": "Task context + recent history",
+          "properties": {
+            "capacity": 8000,
+            "ephemeral": false,
+            "persistence": "task-scoped"
+          }
+        },
+        "reasoning": {
+          "present": true,
+          "implementation": "GPT-4 in loop",
+          "properties": {
+            "loop_based": true
+          }
+        },
+        "action": {
+          "present": true,
+          "implementation": "File operations, web requests, command execution",
+          "properties": {
+            "tools": ["file", "web", "shell", "code_execution"]
+          }
+        }
+      },
+      "extensions": {
+        "episodic_memory": {
+          "present": true,
+          "implementation": "JSON log files",
+          "properties": {
+            "retention": "task-scoped"
+          }
+        },
+        "semantic_memory": {
+          "present": false,
+          "notes": "No curated knowledge base"
+        },
+        "procedural_memory": {
+          "present": false,
+          "notes": "No skill system"
+        },
+        "attention": {
+          "present": false,
+          "notes": "Processes everything"
+        },
+        "goal_management": {
+          "present": true,
+          "implementation": "Explicit goal queue with priorities",
+          "properties": {
+            "goal_driven": true,
+            "subgoals": true
+          }
+        },
+        "error_handling": {
+          "present": true,
+          "implementation": "Basic retry logic",
+          "properties": {
+            "retry_count": 3
+          }
+        },
+        "context_management": {
+          "present": false,
+          "notes": "Single task context"
+        },
+        "meta_cognition": {
+          "present": false
+        },
+        "social_cognition": {
+          "present": false
+        },
+        "planning": {
+          "present": true,
+          "implementation": "Task decomposition",
+          "properties": {
+            "hierarchical": true
+          }
+        },
+        "temporal_reasoning": {
+          "present": false
+        },
+        "learning": {
+          "present": false
+        },
+        "explanation": {
+          "present": false
+        },
+        "emotion": {
+          "present": false
+        },
+        "embodiment": {
+          "present": false
+        }
+      },
+      "patterns": ["deliberative"],
+      "unique_features": [
+        "Goal-driven autonomous operation",
+        "Task decomposition",
+        "Continuous loop execution"
+      ]
+    }
+  }
+}

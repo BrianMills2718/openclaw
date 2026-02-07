@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenClaw Cognitive Architecture</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0a0e14;
+            color: #e6e6e6;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #ff6b6b;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            text-align: center;
+            margin-bottom: 40px;
+            color: #888;
+            font-size: 1.1em;
+        }
+
+        .architecture {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .cognitive-module {
+            background: #1a1f2e;
+            border: 2px solid #2d3548;
+            border-radius: 12px;
+            padding: 20px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .cognitive-module:hover {
+            border-color: #4a90e2;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+        }
+
+        .cognitive-module.active {
+            border-color: #ff6b6b;
+            background: #242938;
+        }
+
+        .module-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .module-icon {
+            font-size: 2em;
+            margin-right: 12px;
+        }
+
+        .module-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .module-category {
+            font-size: 0.85em;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+        }
+
+        .module-description {
+            color: #b0b0b0;
+            line-height: 1.6;
+            margin-bottom: 15px;
+            font-size: 0.95em;
+        }
+
+        .openclaw-implementation {
+            background: #0f1419;
+            border-left: 3px solid #4a90e2;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 12px;
+        }
+
+        .impl-label {
+            font-size: 0.8em;
+            color: #4a90e2;
+            font-weight: 600;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .impl-items {
+            list-style: none;
+        }
+
+        .impl-items li {
+            padding: 4px 0;
+            color: #e6e6e6;
+            font-size: 0.9em;
+        }
+
+        .impl-items li:before {
+            content: "→ ";
+            color: #4a90e2;
+            margin-right: 6px;
+        }
+
+        .detail-panel {
+            background: #1a1f2e;
+            border: 2px solid #ff6b6b;
+            border-radius: 12px;
+            padding: 30px;
+            margin-top: 20px;
+        }
+
+        .detail-title {
+            font-size: 1.8em;
+            color: #ff6b6b;
+            margin-bottom: 20px;
+        }
+
+        .detail-section {
+            margin-bottom: 25px;
+        }
+
+        .detail-section h3 {
+            color: #4a90e2;
+            margin-bottom: 10px;
+            font-size: 1.2em;
+        }
+
+        .detail-section p {
+            color: #b0b0b0;
+            line-height: 1.7;
+            margin-bottom: 10px;
+        }
+
+        .detail-section code {
+            background: #0f1419;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #4a90e2;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .flow-diagram {
+            margin: 40px 0;
+            text-align: center;
+        }
+
+        .flow-arrow {
+            color: #4a90e2;
+            font-size: 2em;
+            margin: 10px 0;
+        }
+
+        .toggle-view {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .toggle-btn {
+            background: #2d3548;
+            color: #e6e6e6;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+            margin: 0 10px;
+            transition: all 0.2s;
+        }
+
+        .toggle-btn:hover {
+            background: #3d4558;
+        }
+
+        .toggle-btn.active {
+            background: #ff6b6b;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        const cognitiveModules = {
+            perception: {
+                icon: "👁️",
+                title: "Perception",
+                category: "Input Processing",
+                description: "How information enters the cognitive system and gets recognized",
+                details: {
+                    general: "Sensory input processing, pattern recognition, and attention mechanisms that determine what information enters the system and how it's initially interpreted.",
+                    implementation: "Multi-channel message ingestion with channel-specific parsing and formatting."
+                },
+                openclaw: [
+                    "Multi-channel input (Discord, WhatsApp, Telegram, etc.)",
+                    "Event types: messages, cron, webhooks, heartbeats",
+                    "Message parsing and normalization",
+                    "Media handling (images, voice, files)"
+                ]
+            },
+            attention: {
+                icon: "🎯",
+                title: "Attention",
+                category: "Input Processing",
+                description: "Filtering and prioritization - what gets processed vs ignored",
+                details: {
+                    general: "Selective attention mechanisms that determine which inputs deserve cognitive resources and processing priority.",
+                    implementation: "Configuration-based filtering and routing rules."
+                },
+                openclaw: [
+                    "requireMention (group chat filtering)",
+                    "groupPolicy: allowlist/denylist",
+                    "DM pairing (unknown sender approval)",
+                    "Channel-specific user permissions",
+                    "activeHours filtering for heartbeats"
+                ]
+            },
+            workingMemory: {
+                icon: "🧠",
+                title: "Working Memory",
+                category: "Memory Systems",
+                description: "Active context being processed - limited capacity, temporary",
+                details: {
+                    general: "Short-term buffer holding currently active information. Limited capacity (measured in tokens). Information is lost if not consolidated to long-term memory.",
+                    implementation: "Current session context with automatic compaction when limits are reached."
+                },
+                openclaw: [
+                    "Session context (~130k tokens for Opus 4.5)",
+                    "Compaction when full",
+                    "Prompt caching (1hr TTL)",
+                    "System prompt + conversation history",
+                    "Ephemeral - resets based on policy"
+                ]
+            },
+            episodicMemory: {
+                icon: "📅",
+                title: "Episodic Memory",
+                category: "Memory Systems",
+                description: "Event logs - what happened when (autobiographical memory)",
+                details: {
+                    general: "Time-stamped records of experiences and events. The 'diary' of the system. Chronological and contextual.",
+                    implementation: "Daily markdown files with append-only event logging."
+                },
+                openclaw: [
+                    "Daily logs: memory/YYYY-MM-DD.md",
+                    "Append-only event stream",
+                    "Reads today + yesterday at session start",
+                    "Raw, unfiltered event history",
+                    "Can grow infinitely (no auto-cleanup)"
+                ]
+            },
+            semanticMemory: {
+                icon: "📚",
+                title: "Semantic Memory",
+                category: "Memory Systems",
+                description: "Facts, concepts, knowledge - decontextualized information",
+                details: {
+                    general: "General knowledge and facts removed from specific temporal context. The 'encyclopedia' of the system.",
+                    implementation: "Curated markdown file with semantic vector search."
+                },
+                openclaw: [
+                    "MEMORY.md (manually curated)",
+                    "Vector search (~400 token chunks, 80 overlap)",
+                    "memory_search tool (semantic queries)",
+                    "Embeddings: local/OpenAI/Gemini",
+                    "Main session only (private, never groups)"
+                ]
+            },
+            proceduralMemory: {
+                icon: "🛠️",
+                title: "Procedural Memory",
+                category: "Memory Systems",
+                description: "Skills - how to do things (know-how vs know-that)",
+                details: {
+                    general: "Procedural knowledge - the 'how' rather than the 'what'. Often implicit and activated automatically when needed.",
+                    implementation: "Progressive disclosure skill system with on-demand loading."
+                },
+                openclaw: [
+                    "Skills index in system prompt (metadata only)",
+                    "700+ skills from ClawdHub",
+                    "Progressive disclosure (load on-demand)",
+                    "SKILL.md: frontmatter (when) + body (how)",
+                    "Custom workspace skills"
+                ]
+            },
+            reasoning: {
+                icon: "💭",
+                title: "Reasoning",
+                category: "Cognitive Processing",
+                description: "Inference, planning, problem-solving, decision-making",
+                details: {
+                    general: "The core cognitive engine - drawing conclusions, planning future actions, solving problems, and making decisions based on available information.",
+                    implementation: "LLM inference with structured system prompts and tool use."
+                },
+                openclaw: [
+                    "LLM inference (Claude/GPT/etc.)",
+                    "Thinking modes: high/low/none",
+                    "Multi-turn conversation planning",
+                    "Tool use reasoning",
+                    "Context-aware decision making"
+                ]
+            },
+            execution: {
+                icon: "⚡",
+                title: "Execution",
+                category: "Output & Action",
+                description: "Action selection and execution - carrying out decisions",
+                details: {
+                    general: "Converting decisions into actions. The motor control system that interfaces with the external world.",
+                    implementation: "Tool invocation system with multi-modal output capabilities."
+                },
+                openclaw: [
+                    "Tool calls (read, write, bash, etc.)",
+                    "Browser automation (CDP + Playwright)",
+                    "Skill-specific tools",
+                    "Channel actions (reactions, pins, threads)",
+                    "Streaming responses"
+                ]
+            },
+            metaCognition: {
+                icon: "🔄",
+                title: "Meta-Cognition",
+                category: "Self-Management",
+                description: "Self-awareness, monitoring, strategy adjustment",
+                details: {
+                    general: "Thinking about thinking. Self-monitoring, recognizing when strategies aren't working, adjusting approaches, and learning from experience.",
+                    implementation: "Automated self-monitoring and maintenance systems."
+                },
+                openclaw: [
+                    "Heartbeat system (30min batched self-checks)",
+                    "Session reset policies (daily/idle)",
+                    "Context compaction strategies",
+                    "Self-update capabilities",
+                    "Skills refresh mechanism"
+                ]
+            }
+        };
+
+        function CognitiveArchitecture() {
+            const [selectedModule, setSelectedModule] = useState(null);
+            const [view, setView] = useState('grid'); // 'grid' or 'flow'
+
+            return (
+                <div className="container">
+                    <h1>🦞 OpenClaw Cognitive Architecture</h1>
+                    <p className="subtitle">Interactive Ontology: General Principles → OpenClaw Implementation</p>
+
+                    <div className="toggle-view">
+                        <button
+                            className={`toggle-btn ${view === 'grid' ? 'active' : ''}`}
+                            onClick={() => setView('grid')}
+                        >
+                            Grid View
+                        </button>
+                        <button
+                            className={`toggle-btn ${view === 'flow' ? 'active' : ''}`}
+                            onClick={() => setView('flow')}
+                        >
+                            Flow View
+                        </button>
+                    </div>
+
+                    {view === 'grid' ? (
+                        <div className="architecture">
+                            {Object.entries(cognitiveModules).map(([key, module]) => (
+                                <div
+                                    key={key}
+                                    className={`cognitive-module ${selectedModule === key ? 'active' : ''}`}
+                                    onClick={() => setSelectedModule(selectedModule === key ? null : key)}
+                                >
+                                    <div className="module-category">{module.category}</div>
+                                    <div className="module-header">
+                                        <div className="module-icon">{module.icon}</div>
+                                        <div className="module-title">{module.title}</div>
+                                    </div>
+                                    <div className="module-description">{module.description}</div>
+
+                                    <div className="openclaw-implementation">
+                                        <div className="impl-label">OpenClaw Implementation</div>
+                                        <ul className="impl-items">
+                                            {module.openclaw.slice(0, 3).map((item, i) => (
+                                                <li key={i}>{item}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="flow-diagram">
+                            <div className="cognitive-module" onClick={() => setSelectedModule('perception')}>
+                                <div className="module-header">
+                                    <div className="module-icon">{cognitiveModules.perception.icon}</div>
+                                    <div className="module-title">Perception & Attention</div>
+                                </div>
+                            </div>
+                            <div className="flow-arrow">↓</div>
+
+                            <div style={{display: 'flex', gap: '20px', justifyContent: 'center', margin: '20px 0'}}>
+                                <div className="cognitive-module" onClick={() => setSelectedModule('workingMemory')}>
+                                    <div className="module-header">
+                                        <div className="module-icon">{cognitiveModules.workingMemory.icon}</div>
+                                        <div className="module-title">Working Memory</div>
+                                    </div>
+                                </div>
+                                <div className="cognitive-module" onClick={() => setSelectedModule('reasoning')}>
+                                    <div className="module-header">
+                                        <div className="module-icon">{cognitiveModules.reasoning.icon}</div>
+                                        <div className="module-title">Reasoning</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flow-arrow">↕️</div>
+
+                            <div style={{display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', margin: '20px 0'}}>
+                                <div className="cognitive-module" onClick={() => setSelectedModule('episodicMemory')}>
+                                    <div className="module-header">
+                                        <div className="module-icon">{cognitiveModules.episodicMemory.icon}</div>
+                                        <div className="module-title">Episodic</div>
+                                    </div>
+                                </div>
+                                <div className="cognitive-module" onClick={() => setSelectedModule('semanticMemory')}>
+                                    <div className="module-header">
+                                        <div className="module-icon">{cognitiveModules.semanticMemory.icon}</div>
+                                        <div className="module-title">Semantic</div>
+                                    </div>
+                                </div>
+                                <div className="cognitive-module" onClick={() => setSelectedModule('proceduralMemory')}>
+                                    <div className="module-header">
+                                        <div className="module-icon">{cognitiveModules.proceduralMemory.icon}</div>
+                                        <div className="module-title">Procedural</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flow-arrow">↓</div>
+
+                            <div className="cognitive-module" onClick={() => setSelectedModule('execution')}>
+                                <div className="module-header">
+                                    <div className="module-icon">{cognitiveModules.execution.icon}</div>
+                                    <div className="module-title">Execution & Output</div>
+                                </div>
+                            </div>
+
+                            <div className="flow-arrow">↻</div>
+
+                            <div className="cognitive-module" onClick={() => setSelectedModule('metaCognition')}>
+                                <div className="module-header">
+                                    <div className="module-icon">{cognitiveModules.metaCognition.icon}</div>
+                                    <div className="module-title">Meta-Cognition</div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {selectedModule && (
+                        <div className="detail-panel">
+                            <div className="detail-title">
+                                {cognitiveModules[selectedModule].icon} {cognitiveModules[selectedModule].title}
+                            </div>
+
+                            <div className="detail-section">
+                                <h3>General Cognitive Principle</h3>
+                                <p>{cognitiveModules[selectedModule].details.general}</p>
+                            </div>
+
+                            <div className="detail-section">
+                                <h3>OpenClaw Implementation</h3>
+                                <p>{cognitiveModules[selectedModule].details.implementation}</p>
+                                <ul className="impl-items">
+                                    {cognitiveModules[selectedModule].openclaw.map((item, i) => (
+                                        <li key={i}>{item}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.render(<CognitiveArchitecture />, document.getElementById('root'));
+    </script>
+</body>
+</html>

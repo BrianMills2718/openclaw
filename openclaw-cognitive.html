@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenClaw Cognitive Architecture - Interactive</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0a0e14;
+            color: #e6e6e6;
+            overflow: hidden;
+        }
+
+        #container {
+            display: flex;
+            height: 100vh;
+        }
+
+        #graph-area {
+            flex: 1;
+            position: relative;
+        }
+
+        #sidebar {
+            width: 400px;
+            background: #1a1f2e;
+            border-left: 2px solid #2d3548;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 1.8em;
+            color: #ff6b6b;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: 0.9em;
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #2d3548;
+        }
+
+        button {
+            background: #2d3548;
+            color: #e6e6e6;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px 5px 5px 0;
+            font-size: 0.9em;
+        }
+
+        button:hover {
+            background: #3d4558;
+        }
+
+        .node {
+            cursor: grab;
+            stroke: #fff;
+            stroke-width: 2px;
+        }
+
+        .node:active {
+            cursor: grabbing;
+        }
+
+        .node.selected {
+            stroke: #ff6b6b;
+            stroke-width: 4px;
+        }
+
+        .link {
+            stroke-width: 2px;
+            stroke-opacity: 0.6;
+            fill: none;
+        }
+
+        .link.bidirectional {
+            stroke-width: 3px;
+            stroke-opacity: 0.8;
+        }
+
+        .link.selected {
+            stroke-width: 5px !important;
+            stroke-opacity: 1 !important;
+            filter: drop-shadow(0 0 8px currentColor);
+        }
+
+        .node-label {
+            font-size: 12px;
+            font-weight: 600;
+            fill: #e6e6e6;
+            pointer-events: none;
+            text-anchor: middle;
+            user-select: none;
+        }
+
+        .link-label {
+            font-size: 10px;
+            fill: #888;
+            pointer-events: none;
+            text-anchor: middle;
+        }
+
+        #detail-panel {
+            display: none;
+        }
+
+        #detail-panel.visible {
+            display: block;
+        }
+
+        .detail-section {
+            margin-bottom: 20px;
+        }
+
+        .detail-section h3 {
+            color: #4a90e2;
+            font-size: 1.1em;
+            margin-bottom: 10px;
+        }
+
+        .detail-section p {
+            line-height: 1.6;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+
+        .detail-section code {
+            background: #0a0e14;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            color: #4a90e2;
+        }
+
+        .detail-section pre {
+            background: #0a0e14;
+            padding: 12px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 0.85em;
+            line-height: 1.4;
+        }
+
+        .property-list {
+            list-style: none;
+        }
+
+        .property-list li {
+            padding: 6px 0;
+            border-bottom: 1px solid #2d3548;
+            font-size: 0.9em;
+        }
+
+        .property-list li:last-child {
+            border-bottom: none;
+        }
+
+        .property-list .key {
+            color: #888;
+            display: inline-block;
+            width: 140px;
+        }
+
+        .property-list .value {
+            color: #e6e6e6;
+        }
+
+        .loop-badge {
+            display: inline-block;
+            background: #2d3548;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            margin: 4px 4px 4px 0;
+            color: #4a90e2;
+        }
+
+        .example-box {
+            background: #0a0e14;
+            border-left: 3px solid #4a90e2;
+            padding: 12px;
+            margin: 10px 0;
+            font-size: 0.85em;
+            line-height: 1.5;
+        }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #2d3548;
+        }
+
+        .metric-label {
+            color: #888;
+            font-size: 0.85em;
+        }
+
+        .metric-value {
+            color: #4a90e2;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="graph-area">
+            <svg id="graph"></svg>
+        </div>
+
+        <div id="sidebar">
+            <h1>OpenClaw Cognitive Loops</h1>
+            <p class="subtitle">Drag nodes • Click for details • Scroll to zoom</p>
+
+            <div class="controls">
+                <button onclick="resetSimulation()">Reset Layout</button>
+                <button onclick="toggleLabels()">Toggle Labels</button>
+            </div>
+
+            <div id="detail-panel">
+                <h3 id="detail-title" style="color: #ff6b6b; margin-bottom: 15px;"></h3>
+
+                <div class="detail-section" id="detail-overview">
+                    <h3>Overview</h3>
+                    <p id="detail-description"></p>
+                </div>
+
+                <div class="detail-section" id="detail-implementation">
+                    <h3>OpenClaw Implementation</h3>
+                    <ul class="property-list" id="detail-properties"></ul>
+                </div>
+
+                <div class="detail-section" id="detail-loops">
+                    <h3>Participates in Loops</h3>
+                    <div id="detail-loop-badges"></div>
+                </div>
+
+                <div class="detail-section" id="detail-example">
+                    <h3>Example</h3>
+                    <div id="detail-example-content"></div>
+                </div>
+
+                <div class="detail-section" id="detail-metrics">
+                    <h3>Key Metrics</h3>
+                    <div id="detail-metrics-content"></div>
+                </div>
+
+                <div class="detail-section" id="detail-code">
+                    <h3>Related Config</h3>
+                    <pre id="detail-code-content"></pre>
+                </div>
+            </div>
+
+            <div id="welcome-panel">
+                <h3 style="color: #4a90e2; margin-bottom: 10px;">How to Use</h3>
+                <p style="font-size: 0.9em; line-height: 1.6;">
+                    • <strong>Drag nodes</strong> to rearrange<br>
+                    • <strong>Click nodes</strong> for detailed info<br>
+                    • <strong>Look for loops</strong> - bidirectional arrows<br>
+                    • <strong>Colored edges</strong> show relationship types
+                </p>
+                <h3 style="color: #4a90e2; margin: 20px 0 10px 0;">Key Cognitive Loops</h3>
+                <div class="loop-badge">Working ↔ Reasoning</div>
+                <div class="loop-badge">Memory Consolidation</div>
+                <div class="loop-badge">Error Recovery</div>
+                <div class="loop-badge">Meta-Cognitive Monitor</div>
+                <div class="loop-badge">Skill Loading</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const graphData = {
+            nodes: [
+                {
+                    id: "perception",
+                    label: "Perception",
+                    category: "input",
+                    description: "Multi-channel message input with normalization and parsing",
+                    implementation: "Discord, WhatsApp, Telegram, Slack, Signal via gateway",
+                    properties: {
+                        "Channels": "5+ supported",
+                        "Format": "Normalized to internal format",
+                        "Media": "Text, images, voice, files",
+                        "Rate Limit": "Per-channel limits"
+                    },
+                    loops: ["perception-attention"],
+                    example: "Discord message '@Moltbot what's the weather?' → Parsed to {channel: 'discord', user: 'alice', text: 'what's the weather?', mention: true}",
+                    metrics: {
+                        "Latency": "~50-200ms per channel",
+                        "Throughput": "~100 msg/sec (total)"
+                    },
+                    code: `channels: {\n  discord: {\n    enabled: true,\n    requireMention: true\n  }\n}`
+                },
+                {
+                    id: "attention",
+                    label: "Attention",
+                    category: "control",
+                    description: "Selective filtering based on salience, permissions, and context",
+                    implementation: "requireMention, groupPolicy, DM pairing, activeHours",
+                    properties: {
+                        "requireMention": "Filters group messages",
+                        "groupPolicy": "allowlist/denylist",
+                        "DM pairing": "Unknown sender approval",
+                        "activeHours": "Time-based filtering"
+                    },
+                    loops: ["perception-attention"],
+                    example: "Group message without mention → FILTERED OUT. DM from paired user → ACCEPTED. Message at 3am with activeHours 8-22 → FILTERED OUT.",
+                    metrics: {
+                        "Filter rate": "~60% messages filtered",
+                        "False positive": "<1%"
+                    },
+                    code: `channels: {\n  discord: {\n    requireMention: true,\n    guilds: {\n      "*": { requireMention: true }\n    }\n  }\n}`
+                },
+                {
+                    id: "working_memory",
+                    label: "Working Memory",
+                    category: "memory",
+                    description: "Active session context with automatic compaction and prompt caching",
+                    implementation: "Per-session context (~130k tokens) with 1hr cache TTL",
+                    properties: {
+                        "Capacity": "~130k tokens (Opus 4.5)",
+                        "Persistence": "Session-scoped (ephemeral)",
+                        "Compaction": "Automatic when full",
+                        "Cache TTL": "1 hour (Anthropic)"
+                    },
+                    loops: ["working-reasoning", "memory-consolidation", "memory-retrieval"],
+                    example: "Contains: System prompt + conversation history + loaded skills + retrieved memory. When capacity exceeded → Consolidates to episodic memory.",
+                    metrics: {
+                        "Avg utilization": "~40k tokens",
+                        "Cache hit rate": "~70%",
+                        "Compaction frequency": "~1/10 sessions"
+                    },
+                    code: `agents: {\n  defaults: {\n    model: {\n      primary: "anthropic/claude-opus-4-5"\n    },\n    models: {\n      "anthropic/claude-opus-4-5": {\n        params: {\n          cacheControlTtl: "1h"\n        }\n      }\n    }\n  }\n}`
+                },
+                {
+                    id: "reasoning",
+                    label: "Reasoning",
+                    category: "processing",
+                    description: "LLM-based inference with tool use and multi-turn planning",
+                    implementation: "Model-agnostic (Claude Opus 4.5, GPT-5.2, Gemini)",
+                    properties: {
+                        "Models": "Claude, GPT, Gemini",
+                        "Thinking modes": "high, low, none",
+                        "Tool use": "Native function calling",
+                        "Streaming": "Token-by-token output"
+                    },
+                    loops: ["working-reasoning", "error-recovery", "skill-loading"],
+                    example: "Input: 'What's 2+2?' → Reasoning: Simple math, no tools needed → Output: '4'. Input: 'Search for AI news' → Reasoning: Need web search → Tool call: browser_navigate.",
+                    metrics: {
+                        "Avg latency": "~2-5 seconds",
+                        "Tool use rate": "~30% of turns",
+                        "Thinking depth": "Configurable"
+                    },
+                    code: `agents: {\n  defaults: {\n    thinking: "medium",\n    timeout: 300\n  }\n}`
+                },
+                {
+                    id: "episodic_memory",
+                    label: "Episodic Memory",
+                    category: "memory",
+                    description: "Append-only daily logs with infinite retention",
+                    implementation: "Markdown files at memory/YYYY-MM-DD.md",
+                    properties: {
+                        "Format": "Markdown",
+                        "Retention": "Infinite (no auto-cleanup)",
+                        "Read on start": "Today + yesterday",
+                        "Write": "On consolidation events"
+                    },
+                    loops: ["memory-consolidation", "semantic-extraction"],
+                    example: "memory/2026-02-05.md:\n• 09:15 User asked about weather\n• 09:16 Retrieved forecast for NYC\n• 14:30 User requested code review\n• 14:45 Found 3 issues in PR #42",
+                    metrics: {
+                        "Avg file size": "~10-50KB/day",
+                        "Growth rate": "Unlimited",
+                        "Read frequency": "Every session start"
+                    },
+                    code: `# Daily log auto-created\n# memory/2026-02-05.md\n- Events appended throughout day\n- No automatic pruning\n- Git-tracked in workspace`
+                },
+                {
+                    id: "semantic_memory",
+                    label: "Semantic Memory",
+                    category: "memory",
+                    description: "Curated knowledge base with vector search",
+                    implementation: "MEMORY.md + semantic search (local/OpenAI/Gemini embeddings)",
+                    properties: {
+                        "File": "MEMORY.md (manual curation)",
+                        "Search": "Vector embeddings",
+                        "Chunk size": "~400 tokens",
+                        "Overlap": "80 tokens",
+                        "Embeddings": "local/OpenAI/Gemini"
+                    },
+                    loops: ["semantic-extraction", "memory-retrieval"],
+                    example: "MEMORY.md:\n# User Preferences\n- Prefers Python over JS\n- Works EST timezone\n# Project Context\n- Main project: moltbot setup\n\nmemory_search('timezone') → Returns relevant chunk with score",
+                    metrics: {
+                        "File size": "~5-50KB",
+                        "Search latency": "~100-300ms",
+                        "Relevance": "Cosine similarity"
+                    },
+                    code: `# memory_search tool usage\nmemory_search("user preferences")\n→ Returns snippets from MEMORY.md\n  with relevance scores`
+                },
+                {
+                    id: "procedural_memory",
+                    label: "Procedural Memory",
+                    category: "memory",
+                    description: "Skills library with progressive disclosure (700+ skills)",
+                    implementation: "ClawdHub registry + local workspace skills",
+                    properties: {
+                        "Count": "700+ from ClawdHub",
+                        "Loading": "Progressive disclosure",
+                        "Index size": "~5-10k tokens",
+                        "Full skill": "~1-2k tokens each",
+                        "Format": "SKILL.md (YAML + Markdown)"
+                    },
+                    loops: ["skill-loading"],
+                    example: "System prompt includes:\n<available_skills>\n  <skill>\n    <name>gemini</name>\n    <description>Use Gemini CLI...</description>\n    <location>~/.openclaw/workspace/skills/gemini/SKILL.md</location>\n  </skill>\n</available_skills>\n\nWhen needed → read(SKILL.md) → Full instructions loaded",
+                    metrics: {
+                        "Token savings": "~65k tokens (vs loading all)",
+                        "Load frequency": "~15% of turns",
+                        "Cache benefit": "High (skills reused)"
+                    },
+                    code: `skills: {\n  load: {\n    extraDirs: ["~/custom-skills"]\n  }\n}\n\n# Skill loaded on-demand via read tool`
+                },
+                {
+                    id: "execution",
+                    label: "Execution",
+                    category: "action",
+                    description: "Tool invocation with sandboxing and streaming output",
+                    implementation: "Built-in tools (bash, browser, read, write) + skill tools",
+                    properties: {
+                        "Tools": "bash, read, write, browser, skills",
+                        "Sandboxing": "Optional per session",
+                        "Streaming": "Token-by-token",
+                        "Error handling": "try/catch/retry"
+                    },
+                    loops: ["error-recovery"],
+                    example: "LLM decides: bash('ls -la') → Tool call → Sandbox execution → Stream output → Return to LLM. On error → Error handler → Retry with backoff.",
+                    metrics: {
+                        "Tool call latency": "~100ms-5s (tool dependent)",
+                        "Error rate": "~5-10%",
+                        "Retry success": "~80%"
+                    },
+                    code: `# Tool call in action\n{\n  "tool": "bash",\n  "args": {"command": "ls -la"},\n  "sandbox": true\n}`
+                },
+                {
+                    id: "meta_cognition",
+                    label: "Meta-Cognition",
+                    category: "meta",
+                    description: "Self-monitoring via heartbeat system with batched checks",
+                    implementation: "Periodic heartbeat (30min default) in main session",
+                    properties: {
+                        "Interval": "30 minutes (default)",
+                        "Session": "Main only",
+                        "Checks": "Email, calendar, tasks, memory",
+                        "activeHours": "Optional time filtering"
+                    },
+                    loops: ["meta-monitor"],
+                    example: "Every 30min:\n1. Check unread emails\n2. Check calendar (next 24hrs)\n3. Review today's memory log\n4. Check pending tasks\n5. If anything urgent → Notify user\n6. Else → Wait for next beat",
+                    metrics: {
+                        "Frequency": "48 beats/day",
+                        "Avg duration": "~5-10 seconds",
+                        "Cost": "~$0.01-0.02/day"
+                    },
+                    code: `agents: {\n  defaults: {\n    heartbeat: {\n      every: "30m",\n      target: "last",\n      activeHours: {\n        start: "08:00",\n        end: "22:00"\n      }\n    }\n  }\n}`
+                },
+                {
+                    id: "error_handling",
+                    label: "Error Handling",
+                    category: "control",
+                    description: "try/catch/finally with exponential backoff retry",
+                    implementation: "OpenProse error handling + retry mechanism",
+                    properties: {
+                        "Strategies": "try/catch/finally",
+                        "Retry": "Exponential backoff",
+                        "Max retries": "3 (configurable)",
+                        "Backoff": "exponential, linear, none"
+                    },
+                    loops: ["error-recovery"],
+                    example: "try:\n  session 'Call API'\ncatch as err:\n  session 'Handle error gracefully'\n    context: err\n    retry: 3\n    backoff: 'exponential'",
+                    metrics: {
+                        "Recovery rate": "~80%",
+                        "Avg retries": "1.5",
+                        "Max backoff": "~30 seconds"
+                    },
+                    code: `# OpenProse error handling\ntry:\n  session "Risky operation"\ncatch as err:\n  session "Recover"\n    context: err\n    retry: 3\n    backoff: "exponential"`
+                },
+                {
+                    id: "context_management",
+                    label: "Context Management",
+                    category: "control",
+                    description: "Session isolation and context switching",
+                    implementation: "Session routing with per-sender/channel isolation",
+                    properties: {
+                        "Scope": "per-sender (default)",
+                        "dmScope": "main (continuity)",
+                        "Reset": "Daily at 4am OR idle timeout",
+                        "Isolation": "Prevents context leakage"
+                    },
+                    loops: [],
+                    example: "Alice DMs from Discord → Session A\nBob DMs from WhatsApp → Session B\nAlice DMs from Telegram → Session A (same identity)\n\nSessions isolated, no cross-contamination.",
+                    metrics: {
+                        "Sessions": "~10-50 active",
+                        "Isolation": "100%",
+                        "Reset frequency": "Daily"
+                    },
+                    code: `session: {\n  scope: "per-sender",\n  dmScope: "main",\n  reset: {\n    mode: "daily",\n    atHour: 4\n  }\n}`
+                }
+            ],
+            links: [
+                // Perception → Attention loop
+                {
+                    source: "perception", target: "attention", label: "Input", type: "data", bidirectional: false,
+                    description: "Raw input flows from channels to attention filter",
+                    trigger: "New message arrives on any channel",
+                    example: "Discord message '@Moltbot help' → Attention checks if mention required → If yes, passes through",
+                    latency: "~5-10ms",
+                    implementation: "Message event → Gateway → Channel handler → Attention filter",
+                    trace: "discord.on('message') → gateway.route() → attention.check(requireMention)"
+                },
+                {
+                    source: "attention", target: "perception", label: "Filter", type: "control", bidirectional: false,
+                    description: "Attention modulates what perception processes",
+                    trigger: "Salience threshold, permissions, time-based rules",
+                    example: "If message lacks @mention in group → STOP. If DM from unpaired user → Ask for pairing.",
+                    latency: "~1-5ms",
+                    implementation: "requireMention, groupPolicy, DM pairing checks",
+                    trace: "if (requireMention && !hasMention) return reject"
+                },
+
+                // Attention → Working Memory
+                {
+                    source: "attention", target: "working_memory", label: "Accepted", type: "data", bidirectional: false,
+                    description: "Filtered input loads into session context",
+                    trigger: "Message passes all attention filters",
+                    example: "Valid DM or mentioned group message → Add to session context as user message",
+                    latency: "~10-20ms",
+                    implementation: "Append to session.messages[] array",
+                    trace: "session.addMessage({role: 'user', content: text})"
+                },
+
+                // Working Memory ↔ Reasoning (KEY LOOP)
+                {
+                    source: "working_memory", target: "reasoning", label: "Context", type: "data", bidirectional: true,
+                    description: "**CORE COGNITIVE LOOP**: Working memory provides context, reasoning updates it",
+                    trigger: "Every LLM inference turn",
+                    example: "Session has: system prompt + conversation history + loaded skills → LLM reasons → Produces assistant message → Adds back to session",
+                    latency: "~50-100ms (context assembly) + LLM time",
+                    implementation: "Build prompt from session → LLM inference → Stream response → Update session",
+                    trace: "prompt = buildPrompt(session) → llm.generate(prompt) → session.addMessage({role: 'assistant', content: response})",
+                    loop: "This bidirectional flow is THE fundamental cognitive loop - thinking updates context, context informs thinking"
+                },
+
+                // Memory Consolidation Loop
+                {
+                    source: "working_memory", target: "episodic_memory", label: "Consolidate", type: "memory", bidirectional: false,
+                    description: "When working memory fills, important events consolidate to episodic storage",
+                    trigger: "Session end, capacity exceeded, or manual save",
+                    example: "Session with 50k tokens → User says goodbye → Consolidate: Write summary to memory/2026-02-05.md",
+                    latency: "~100-500ms (write to disk)",
+                    implementation: "Extract key events → Append to today's markdown file",
+                    trace: "onSessionEnd() → extractEvents(session) → fs.appendFile('memory/2026-02-05.md', events)"
+                },
+                {
+                    source: "episodic_memory", target: "semantic_memory", label: "Extract", type: "memory", bidirectional: false,
+                    description: "Patterns from daily logs extracted into curated knowledge",
+                    trigger: "Manual curation by user (not automatic)",
+                    example: "User reviews memory/2026-02-04.md → Notices pattern → Adds to MEMORY.md: 'User prefers Python for data tasks'",
+                    latency: "N/A (manual process)",
+                    implementation: "User manually edits MEMORY.md",
+                    trace: "Manual: User reads daily logs → Curates into MEMORY.md"
+                },
+
+                // Memory Retrieval Loop
+                {
+                    source: "semantic_memory", target: "working_memory", label: "Retrieve", type: "retrieval", bidirectional: false,
+                    description: "Semantic search retrieves relevant knowledge into active context",
+                    trigger: "LLM calls memory_search tool OR session start reads MEMORY.md",
+                    example: "User asks 'What timezone am I in?' → memory_search('timezone') → Finds 'User: EST timezone' → Loads into context",
+                    latency: "~100-300ms (vector search + read)",
+                    implementation: "Embed query → Cosine similarity search → Return top chunks",
+                    trace: "memory_search(query) → embeddings.search(query) → chunks → addToContext(chunks)"
+                },
+
+                // Skill Loading Loop
+                {
+                    source: "reasoning", target: "procedural_memory", label: "Match skill", type: "retrieval", bidirectional: false,
+                    description: "LLM matches current task to skill description in index",
+                    trigger: "Task requires specialized capability",
+                    example: "User: 'Generate an image of a cat' → LLM sees skill 'nano-banana-pro: Generate images via Gemini' → Match!",
+                    latency: "~0ms (index already in context)",
+                    implementation: "Skills index in system prompt → LLM pattern matching",
+                    trace: "System prompt contains skill descriptions → LLM decides which to use"
+                },
+                {
+                    source: "procedural_memory", target: "working_memory", label: "Load", type: "retrieval", bidirectional: false,
+                    description: "Full skill instructions loaded on-demand into context",
+                    trigger: "LLM calls read tool on SKILL.md file",
+                    example: "LLM: read('~/.openclaw/workspace/skills/nano-banana-pro/SKILL.md') → Full instructions loaded → Now knows HOW to use it",
+                    latency: "~50-200ms (file read)",
+                    implementation: "read tool → Parse SKILL.md → Add to context",
+                    trace: "read(skillPath) → parseMarkdown(content) → addToContext(instructions)"
+                },
+
+                // Execution
+                {
+                    source: "reasoning", target: "execution", label: "Tool call", type: "data", bidirectional: false,
+                    description: "LLM decides to use a tool and invokes it",
+                    trigger: "LLM function calling returns tool use",
+                    example: "LLM: 'I need to check the weather' → Tool: bash('curl wttr.in/NYC') → Execute",
+                    latency: "~100ms-5s (tool dependent)",
+                    implementation: "Parse tool call from LLM → Route to tool handler → Execute",
+                    trace: "llm.response.toolUse → toolRegistry.execute(toolName, args)"
+                },
+
+                // Error Recovery Loop
+                {
+                    source: "execution", target: "error_handling", label: "On fail", type: "control", bidirectional: false,
+                    description: "Tool execution failure triggers error handler",
+                    trigger: "Tool exits with non-zero code OR throws exception",
+                    example: "bash('invalid-command') → Exit code 127 → Error handler catches → Decides: retry or fail gracefully",
+                    latency: "~1-10ms (error detection)",
+                    implementation: "try/catch around tool execution → Catch errors → Route to handler",
+                    trace: "try { tool.execute() } catch (err) { errorHandler.handle(err) }"
+                },
+                {
+                    source: "error_handling", target: "reasoning", label: "Recover", type: "control", bidirectional: false,
+                    description: "Error handler passes context back to LLM for recovery strategy",
+                    trigger: "Error caught and analyzed",
+                    example: "Error: 'File not found' → Pass to LLM with context → LLM: 'Let me try a different path' → New tool call",
+                    latency: "~50-100ms + LLM inference",
+                    implementation: "Build error context → Add to session → Re-invoke LLM",
+                    trace: "session.addMessage({role: 'error', content: errorDetails}) → llm.generate(session)"
+                },
+
+                // Meta-cognitive Monitor Loop
+                {
+                    source: "meta_cognition", target: "working_memory", label: "Monitor", type: "control", bidirectional: false,
+                    description: "Heartbeat reads current session state for self-assessment",
+                    trigger: "Every 30 minutes (heartbeat interval)",
+                    example: "Heartbeat: Check session token count → 120k/130k → High utilization, might need compaction soon",
+                    latency: "~5-10ms (read metadata)",
+                    implementation: "Read session.messages.length, token count, last activity",
+                    trace: "heartbeat.check() → session.getMetrics() → analyze()"
+                },
+                {
+                    source: "meta_cognition", target: "reasoning", label: "Monitor", type: "control", bidirectional: false,
+                    description: "Heartbeat invokes LLM to check if anything needs attention",
+                    trigger: "Every heartbeat interval",
+                    example: "Heartbeat LLM prompt: 'Check email, calendar, tasks. Anything urgent?' → LLM: 'Meeting in 10min, notify user'",
+                    latency: "~2-5s (LLM inference)",
+                    implementation: "Build heartbeat prompt → LLM decides → Action if needed",
+                    trace: "buildHeartbeatPrompt() → llm.generate() → if (urgent) notify()"
+                },
+                {
+                    source: "meta_cognition", target: "execution", label: "Monitor", type: "control", bidirectional: false,
+                    description: "Heartbeat can trigger actions based on monitoring",
+                    trigger: "Heartbeat LLM decides action needed",
+                    example: "Heartbeat finds unread important email → Trigger tool: send_notification('You have urgent email from boss')",
+                    latency: "~100ms-1s (tool execution)",
+                    implementation: "Heartbeat LLM returns tool call → Execute",
+                    trace: "heartbeat.llm.response.toolUse → execute(tool)"
+                },
+
+                // Context Management
+                {
+                    source: "context_management", target: "working_memory", label: "Switch", type: "control", bidirectional: false,
+                    description: "Session router switches between isolated contexts",
+                    trigger: "New message from different sender/channel",
+                    example: "Alice DMs → Load session A. Bob DMs → Save session A, load session B. Alice again → Save B, load A.",
+                    latency: "~10-50ms (serialize/deserialize session)",
+                    implementation: "Persist current session → Load target session from store",
+                    trace: "sessions.save(currentSession) → sessions.load(targetSessionKey)"
+                }
+            ]
+        };
+
+        const colors = {
+            input: "#3498db",
+            control: "#f39c12",
+            memory: "#e74c3c",
+            processing: "#9b59b6",
+            action: "#16a085",
+            meta: "#34495e"
+        };
+
+        const edgeColors = {
+            data: "#4a90e2",
+            memory: "#e74c3c",
+            retrieval: "#2ecc71",
+            control: "#f39c12"
+        };
+
+        let svg, g, simulation, node, link, linkLabel, nodeLabel;
+        let showLabels = true;
+        let selectedNode = null;
+
+        function init() {
+            const width = window.innerWidth - 400;
+            const height = window.innerHeight;
+
+            svg = d3.select('#graph')
+                .attr('width', width)
+                .attr('height', height);
+
+            // Zoom
+            const zoom = d3.zoom()
+                .scaleExtent([0.1, 4])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                });
+
+            svg.call(zoom);
+
+            g = svg.append('g');
+
+            // Arrow markers
+            const defs = g.append('defs');
+
+            Object.entries(edgeColors).forEach(([type, color]) => {
+                defs.append('marker')
+                    .attr('id', `arrow-${type}`)
+                    .attr('viewBox', '0 0 10 10')
+                    .attr('refX', 25)
+                    .attr('refY', 5)
+                    .attr('markerWidth', 6)
+                    .attr('markerHeight', 6)
+                    .attr('orient', 'auto')
+                    .append('path')
+                    .attr('d', 'M 0 0 L 10 5 L 0 10 z')
+                    .attr('fill', color);
+            });
+
+            // Force simulation
+            simulation = d3.forceSimulation(graphData.nodes)
+                .force('link', d3.forceLink(graphData.links)
+                    .id(d => d.id)
+                    .distance(150))
+                .force('charge', d3.forceManyBody().strength(-500))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(50));
+
+            // Links
+            link = g.append('g')
+                .selectAll('path')
+                .data(graphData.links)
+                .join('path')
+                .attr('class', d => `link ${d.bidirectional ? 'bidirectional' : ''}`)
+                .attr('stroke', d => edgeColors[d.type])
+                .attr('marker-end', d => `url(#arrow-${d.type})`)
+                .style('cursor', 'pointer')
+                .on('click', (event, d) => showEdgeDetail(d))
+                .on('mouseover', function() {
+                    d3.select(this).attr('stroke-width', 4);
+                })
+                .on('mouseout', function(event, d) {
+                    d3.select(this).attr('stroke-width', d.bidirectional ? 3 : 2);
+                });
+
+            // Link labels
+            linkLabel = g.append('g')
+                .selectAll('text')
+                .data(graphData.links)
+                .join('text')
+                .attr('class', 'link-label')
+                .text(d => d.label);
+
+            // Nodes
+            node = g.append('g')
+                .selectAll('circle')
+                .data(graphData.nodes)
+                .join('circle')
+                .attr('class', 'node')
+                .attr('r', 20)
+                .attr('fill', d => colors[d.category])
+                .on('click', (event, d) => showNodeDetail(d))
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended));
+
+            // Node labels
+            nodeLabel = g.append('g')
+                .selectAll('text')
+                .data(graphData.nodes)
+                .join('text')
+                .attr('class', 'node-label')
+                .attr('dy', 35)
+                .text(d => d.label);
+
+            simulation.on('tick', () => {
+                link.attr('d', d => {
+                    const dx = d.target.x - d.source.x;
+                    const dy = d.target.y - d.source.y;
+                    const dr = d.bidirectional ? Math.sqrt(dx * dx + dy * dy) * 0.5 : 0;
+                    return `M${d.source.x},${d.source.y}A${dr},${dr} 0 0,1 ${d.target.x},${d.target.y}`;
+                });
+
+                linkLabel
+                    .attr('x', d => (d.source.x + d.target.x) / 2)
+                    .attr('y', d => (d.source.y + d.target.y) / 2 - 5);
+
+                node
+                    .attr('cx', d => d.x)
+                    .attr('cy', d => d.y);
+
+                nodeLabel
+                    .attr('x', d => d.x)
+                    .attr('y', d => d.y);
+            });
+        }
+
+        function showNodeDetail(d) {
+            // Update selection
+            node.classed('selected', n => n.id === d.id);
+            link.classed('selected', false);
+            selectedNode = d;
+
+            // Show detail panel
+            document.getElementById('welcome-panel').style.display = 'none';
+            document.getElementById('detail-panel').classList.add('visible');
+
+            // Populate details
+            document.getElementById('detail-title').textContent = d.label;
+            document.getElementById('detail-description').textContent = d.description;
+
+            // Properties
+            const propList = document.getElementById('detail-properties');
+            propList.innerHTML = '';
+            Object.entries(d.properties).forEach(([key, value]) => {
+                const li = document.createElement('li');
+                li.innerHTML = `<span class="key">${key}:</span><span class="value">${value}</span>`;
+                propList.appendChild(li);
+            });
+
+            // Loops
+            const loopBadges = document.getElementById('detail-loop-badges');
+            loopBadges.innerHTML = '';
+            d.loops.forEach(loop => {
+                const badge = document.createElement('div');
+                badge.className = 'loop-badge';
+                badge.textContent = loop;
+                loopBadges.appendChild(badge);
+            });
+
+            // Example
+            document.getElementById('detail-example-content').innerHTML =
+                `<div class="example-box">${d.example.replace(/\n/g, '<br>')}</div>`;
+
+            // Metrics
+            const metricsDiv = document.getElementById('detail-metrics-content');
+            metricsDiv.innerHTML = '';
+            Object.entries(d.metrics).forEach(([key, value]) => {
+                const metric = document.createElement('div');
+                metric.className = 'metric';
+                metric.innerHTML = `<span class="metric-label">${key}</span><span class="metric-value">${value}</span>`;
+                metricsDiv.appendChild(metric);
+            });
+
+            // Code
+            document.getElementById('detail-code-content').textContent = d.code;
+        }
+
+        function showEdgeDetail(d) {
+            // Update selection
+            node.classed('selected', false);
+            link.classed('selected', false);
+            d3.select(event.currentTarget).classed('selected', true);
+
+            // Show detail panel
+            document.getElementById('welcome-panel').style.display = 'none';
+            document.getElementById('detail-panel').classList.add('visible');
+
+            // Get source and target node info
+            const sourceNode = graphData.nodes.find(n => n.id === d.source.id || n.id === d.source);
+            const targetNode = graphData.nodes.find(n => n.id === d.target.id || n.id === d.target);
+
+            // Populate details
+            document.getElementById('detail-title').textContent =
+                `${sourceNode.label} → ${targetNode.label}`;
+            document.getElementById('detail-description').textContent = d.description;
+
+            // Properties (relationship metadata)
+            const propList = document.getElementById('detail-properties');
+            propList.innerHTML = '';
+            [
+                ['Type', d.type],
+                ['Label', d.label],
+                ['Trigger', d.trigger || 'N/A'],
+                ['Latency', d.latency || 'N/A'],
+                ['Bidirectional', d.bidirectional ? 'Yes (feedback loop)' : 'No']
+            ].forEach(([key, value]) => {
+                const li = document.createElement('li');
+                li.innerHTML = `<span class="key">${key}:</span><span class="value">${value}</span>`;
+                propList.appendChild(li);
+            });
+
+            // Loops (if this edge is part of a feedback loop)
+            const loopBadges = document.getElementById('detail-loop-badges');
+            loopBadges.innerHTML = '';
+            if (d.bidirectional) {
+                const badge = document.createElement('div');
+                badge.className = 'loop-badge';
+                badge.textContent = 'Bidirectional Feedback Loop';
+                loopBadges.appendChild(badge);
+            }
+            if (d.loop) {
+                const badge = document.createElement('div');
+                badge.className = 'loop-badge';
+                badge.textContent = 'Core Cognitive Loop';
+                loopBadges.appendChild(badge);
+            }
+
+            // Example
+            document.getElementById('detail-example-content').innerHTML =
+                `<div class="example-box">${d.example.replace(/\n/g, '<br>')}</div>`;
+
+            // Metrics (implementation details)
+            const metricsDiv = document.getElementById('detail-metrics-content');
+            metricsDiv.innerHTML = '';
+            if (d.implementation) {
+                const metric = document.createElement('div');
+                metric.className = 'metric';
+                metric.innerHTML = `<span class="metric-label">Implementation</span><span class="metric-value">${d.implementation}</span>`;
+                metricsDiv.appendChild(metric);
+            }
+
+            // Code (trace)
+            document.getElementById('detail-code-content').textContent = d.trace || 'No trace available';
+        }
+
+        function resetSimulation() {
+            simulation.alpha(1).restart();
+        }
+
+        function toggleLabels() {
+            showLabels = !showLabels;
+            nodeLabel.style('display', showLabels ? 'block' : 'none');
+            linkLabel.style('display', showLabels ? 'block' : 'none');
+        }
+
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+
+        init();
+    </script>
+</body>
+</html>

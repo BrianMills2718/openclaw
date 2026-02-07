@@ -1,0 +1,472 @@
+@prefix : <http://openclaw.ai/ontology/cognitive#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xml: <http://www.w3.org/XML/1998/namespace> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix time: <http://www.w3.org/2006/time#> .
+
+<http://openclaw.ai/ontology/cognitive> rdf:type owl:Ontology ;
+    rdfs:label "Cognitive Architecture Ontology" ;
+    rdfs:comment "A formal ontology for describing agent cognitive systems using reified hypergraph relationships" .
+
+#################################################################
+#    Object Properties (Relationships)
+#################################################################
+
+### Information Flow Properties
+:feedsInto rdf:type owl:ObjectProperty ;
+    rdfs:label "feeds into" ;
+    rdfs:comment "Information flows from source to target" .
+
+:consolidatesTo rdf:type owl:ObjectProperty ;
+    rdfs:label "consolidates to" ;
+    rdfs:comment "Information is consolidated from source to target memory" .
+
+:retrievesFrom rdf:type owl:ObjectProperty ;
+    rdfs:label "retrieves from" ;
+    rdfs:comment "Component retrieves information from memory" .
+
+### Control Flow Properties
+:activates rdf:type owl:ObjectProperty ;
+    rdfs:label "activates" ;
+    rdfs:comment "Component triggers activation of another component" .
+
+:inhibits rdf:type owl:ObjectProperty ;
+    rdfs:label "inhibits" ;
+    rdfs:comment "Component suppresses another component" .
+
+:triggers rdf:type owl:ObjectProperty ;
+    rdfs:label "triggers" ;
+    rdfs:comment "Event triggers a process" .
+
+### Temporal Properties
+:precedes rdf:type owl:ObjectProperty ;
+    rdfs:label "precedes" ;
+    rdfs:comment "Occurs before in time" .
+
+:concurrent rdf:type owl:ObjectProperty ;
+    rdfs:label "concurrent with" ;
+    rdfs:comment "Occurs at same time" .
+
+### Structural Properties
+:hasPart rdf:type owl:ObjectProperty ;
+    rdfs:label "has part" ;
+    rdfs:comment "Compositional relationship" .
+
+:isPartOf rdf:type owl:ObjectProperty ;
+    rdfs:label "is part of" ;
+    owl:inverseOf :hasPart .
+
+### Dependency Properties
+:requires rdf:type owl:ObjectProperty ;
+    rdfs:label "requires" ;
+    rdfs:comment "Component requires another to function" .
+
+### Reification Properties (for hypergraph)
+:participatesIn rdf:type owl:ObjectProperty ;
+    rdfs:label "participates in" ;
+    rdfs:comment "Entity participates in a relationship event" .
+
+:hasRole rdf:type owl:ObjectProperty ;
+    rdfs:label "has role" ;
+    rdfs:comment "Participant's role in relationship" .
+
+:hasSource rdf:type owl:ObjectProperty ;
+    rdfs:label "has source" ;
+    rdfs:comment "Relationship source participant" .
+
+:hasTarget rdf:type owl:ObjectProperty ;
+    rdfs:label "has target" ;
+    rdfs:comment "Relationship target participant" .
+
+:hasTrigger rdf:type owl:ObjectProperty ;
+    rdfs:label "has trigger" ;
+    rdfs:comment "What triggers this relationship" .
+
+#################################################################
+#    Data Properties
+#################################################################
+
+:hasCapacity rdf:type owl:DatatypeProperty ;
+    rdfs:label "has capacity" ;
+    rdfs:domain :MemorySystem ;
+    rdfs:range xsd:integer ;
+    rdfs:comment "Capacity in tokens or items" .
+
+:hasLatency rdf:type owl:DatatypeProperty ;
+    rdfs:label "has latency" ;
+    rdfs:range xsd:duration ;
+    rdfs:comment "Processing latency" .
+
+:hasAccuracy rdf:type owl:DatatypeProperty ;
+    rdfs:label "has accuracy" ;
+    rdfs:range xsd:float ;
+    rdfs:comment "Accuracy metric (0.0-1.0)" .
+
+:isEphemeral rdf:type owl:DatatypeProperty ;
+    rdfs:label "is ephemeral" ;
+    rdfs:range xsd:boolean ;
+    rdfs:comment "Whether data persists" .
+
+:hasRetentionPolicy rdf:type owl:DatatypeProperty ;
+    rdfs:label "has retention policy" ;
+    rdfs:range xsd:string .
+
+#################################################################
+#    Classes - Top Level
+#################################################################
+
+:CognitiveComponent rdf:type owl:Class ;
+    rdfs:label "Cognitive Component" ;
+    rdfs:comment "Top-level class for all cognitive architecture components" .
+
+:RelationshipEvent rdf:type owl:Class ;
+    rdfs:label "Relationship Event" ;
+    rdfs:comment "Reified relationship between cognitive components" .
+
+:Role rdf:type owl:Class ;
+    rdfs:label "Role" ;
+    rdfs:comment "Role that a component plays in a relationship" .
+
+#################################################################
+#    Classes - Input Processing
+#################################################################
+
+:InputProcessing rdf:type owl:Class ;
+    rdfs:subClassOf :CognitiveComponent ;
+    rdfs:label "Input Processing" .
+
+:Perception rdf:type owl:Class ;
+    rdfs:subClassOf :InputProcessing ;
+    rdfs:label "Perception" ;
+    rdfs:comment "Sensory input processing and pattern recognition" .
+
+:Attention rdf:type owl:Class ;
+    rdfs:subClassOf :InputProcessing ;
+    rdfs:label "Attention" ;
+    rdfs:comment "Selective attention and filtering mechanisms" .
+
+:PatternRecognition rdf:type owl:Class ;
+    rdfs:subClassOf :Perception ;
+    rdfs:label "Pattern Recognition" .
+
+#################################################################
+#    Classes - Memory Systems
+#################################################################
+
+:MemorySystem rdf:type owl:Class ;
+    rdfs:subClassOf :CognitiveComponent ;
+    rdfs:label "Memory System" .
+
+:WorkingMemory rdf:type owl:Class ;
+    rdfs:subClassOf :MemorySystem ;
+    rdfs:label "Working Memory" ;
+    rdfs:comment "Limited capacity temporary storage" .
+
+:EpisodicMemory rdf:type owl:Class ;
+    rdfs:subClassOf :MemorySystem ;
+    rdfs:label "Episodic Memory" ;
+    rdfs:comment "Time-stamped event logs" .
+
+:SemanticMemory rdf:type owl:Class ;
+    rdfs:subClassOf :MemorySystem ;
+    rdfs:label "Semantic Memory" ;
+    rdfs:comment "Decontextualized facts and concepts" .
+
+:ProceduralMemory rdf:type owl:Class ;
+    rdfs:subClassOf :MemorySystem ;
+    rdfs:label "Procedural Memory" ;
+    rdfs:comment "Skills and how-to knowledge" .
+
+#################################################################
+#    Classes - Processing
+#################################################################
+
+:ProcessingSystem rdf:type owl:Class ;
+    rdfs:subClassOf :CognitiveComponent ;
+    rdfs:label "Processing System" .
+
+:Reasoning rdf:type owl:Class ;
+    rdfs:subClassOf :ProcessingSystem ;
+    rdfs:label "Reasoning" ;
+    rdfs:comment "Inference and conclusion drawing" .
+
+:Planning rdf:type owl:Class ;
+    rdfs:subClassOf :ProcessingSystem ;
+    rdfs:label "Planning" ;
+    rdfs:comment "Future-oriented thinking and strategy" .
+
+:ProblemSolving rdf:type owl:Class ;
+    rdfs:subClassOf :ProcessingSystem ;
+    rdfs:label "Problem Solving" .
+
+:DecisionMaking rdf:type owl:Class ;
+    rdfs:subClassOf :ProcessingSystem ;
+    rdfs:label "Decision Making" .
+
+#################################################################
+#    Classes - Goal Management
+#################################################################
+
+:GoalSystem rdf:type owl:Class ;
+    rdfs:subClassOf :CognitiveComponent ;
+    rdfs:label "Goal System" .
+
+:BeliefSystem rdf:type owl:Class ;
+    rdfs:subClassOf :GoalSystem ;
+    rdfs:label "Belief System" ;
+    rdfs:comment "What the agent believes to be true" .
+
+:DesireSystem rdf:type owl:Class ;
+    rdfs:subClassOf :GoalSystem ;
+    rdfs:label "Desire System" ;
+    rdfs:comment "What the agent wants to achieve" .
+
+:IntentionSystem rdf:type owl:Class ;
+    rdfs:subClassOf :GoalSystem ;
+    rdfs:label "Intention System" ;
+    rdfs:comment "What the agent commits to doing" .
+
+#################################################################
+#    Classes - Error Handling
+#################################################################
+
+:ErrorHandling rdf:type owl:Class ;
+    rdfs:subClassOf :CognitiveComponent ;
+    rdfs:label "Error Handling" .
+
+:ErrorDetection rdf:type owl:Class ;
+    rdfs:subClassOf :ErrorHandling ;
+    rdfs:label "Error Detection" .
+
+:ErrorRecovery rdf:type owl:Class ;
+    rdfs:subClassOf :ErrorHandling ;
+    rdfs:label "Error Recovery" .
+
+:RetryMechanism rdf:type owl:Class ;
+    rdfs:subClassOf :ErrorRecovery ;
+    rdfs:label "Retry Mechanism" .
+
+#################################################################
+#    Classes - Context Management
+#################################################################
+
+:ContextManagement rdf:type owl:Class ;
+    rdfs:subClassOf :CognitiveComponent ;
+    rdfs:label "Context Management" .
+
+:ContextBuilding rdf:type owl:Class ;
+    rdfs:subClassOf :ContextManagement ;
+    rdfs:label "Context Building" .
+
+:ContextSwitching rdf:type owl:Class ;
+    rdfs:subClassOf :ContextManagement ;
+    rdfs:label "Context Switching" .
+
+#################################################################
+#    Classes - Action & Output
+#################################################################
+
+:ActionSystem rdf:type owl:Class ;
+    rdfs:subClassOf :CognitiveComponent ;
+    rdfs:label "Action System" .
+
+:ActionSelection rdf:type owl:Class ;
+    rdfs:subClassOf :ActionSystem ;
+    rdfs:label "Action Selection" .
+
+:Execution rdf:type owl:Class ;
+    rdfs:subClassOf :ActionSystem ;
+    rdfs:label "Execution" .
+
+:ToolUse rdf:type owl:Class ;
+    rdfs:subClassOf :Execution ;
+    rdfs:label "Tool Use" .
+
+#################################################################
+#    Classes - Meta-Cognition
+#################################################################
+
+:MetaCognition rdf:type owl:Class ;
+    rdfs:subClassOf :CognitiveComponent ;
+    rdfs:label "Meta-Cognition" .
+
+:SelfMonitoring rdf:type owl:Class ;
+    rdfs:subClassOf :MetaCognition ;
+    rdfs:label "Self-Monitoring" .
+
+:StrategyAdjustment rdf:type owl:Class ;
+    rdfs:subClassOf :MetaCognition ;
+    rdfs:label "Strategy Adjustment" .
+
+:Reflection rdf:type owl:Class ;
+    rdfs:subClassOf :MetaCognition ;
+    rdfs:label "Reflection" .
+
+#################################################################
+#    Classes - Learning
+#################################################################
+
+:LearningSystem rdf:type owl:Class ;
+    rdfs:subClassOf :CognitiveComponent ;
+    rdfs:label "Learning System" .
+
+:KnowledgeAcquisition rdf:type owl:Class ;
+    rdfs:subClassOf :LearningSystem ;
+    rdfs:label "Knowledge Acquisition" .
+
+:SkillAcquisition rdf:type owl:Class ;
+    rdfs:subClassOf :LearningSystem ;
+    rdfs:label "Skill Acquisition" .
+
+:Adaptation rdf:type owl:Class ;
+    rdfs:subClassOf :LearningSystem ;
+    rdfs:label "Adaptation" .
+
+#################################################################
+#    Classes - Social Cognition
+#################################################################
+
+:SocialCognition rdf:type owl:Class ;
+    rdfs:subClassOf :CognitiveComponent ;
+    rdfs:label "Social Cognition" .
+
+:TheoryOfMind rdf:type owl:Class ;
+    rdfs:subClassOf :SocialCognition ;
+    rdfs:label "Theory of Mind" .
+
+:AgentCoordination rdf:type owl:Class ;
+    rdfs:subClassOf :SocialCognition ;
+    rdfs:label "Agent Coordination" .
+
+#################################################################
+#    Classes - Temporal & Causal Reasoning
+#################################################################
+
+:TemporalReasoning rdf:type owl:Class ;
+    rdfs:subClassOf :ProcessingSystem ;
+    rdfs:label "Temporal Reasoning" .
+
+:CausalReasoning rdf:type owl:Class ;
+    rdfs:subClassOf :ProcessingSystem ;
+    rdfs:label "Causal Reasoning" .
+
+#################################################################
+#    Classes - Explanation
+#################################################################
+
+:ExplanationSystem rdf:type owl:Class ;
+    rdfs:subClassOf :CognitiveComponent ;
+    rdfs:label "Explanation System" .
+
+:TraceGeneration rdf:type owl:Class ;
+    rdfs:subClassOf :ExplanationSystem ;
+    rdfs:label "Trace Generation" .
+
+:Justification rdf:type owl:Class ;
+    rdfs:subClassOf :ExplanationSystem ;
+    rdfs:label "Justification" .
+
+#################################################################
+#    Role Classes
+#################################################################
+
+:SourceRole rdf:type :Role ;
+    rdfs:label "Source" ;
+    rdfs:comment "Originator of information flow" .
+
+:TargetRole rdf:type :Role ;
+    rdfs:label "Target" ;
+    rdfs:comment "Recipient of information flow" .
+
+:TriggerRole rdf:type :Role ;
+    rdfs:label "Trigger" ;
+    rdfs:comment "Initiator of process" .
+
+:ModulatorRole rdf:type :Role ;
+    rdfs:label "Modulator" ;
+    rdfs:comment "Influences but doesn't control" .
+
+:ControllerRole rdf:type :Role ;
+    rdfs:label "Controller" ;
+    rdfs:comment "Directs or regulates" .
+
+#################################################################
+#    Relationship Event Types
+#################################################################
+
+:InformationFlowEvent rdf:type :RelationshipEvent ;
+    rdfs:label "Information Flow" ;
+    rdfs:comment "Data moving between components" .
+
+:ControlFlowEvent rdf:type :RelationshipEvent ;
+    rdfs:label "Control Flow" ;
+    rdfs:comment "Activation/inhibition between components" .
+
+:ConsolidationEvent rdf:type :RelationshipEvent ;
+    rdfs:label "Consolidation" ;
+    rdfs:comment "Memory consolidation process" .
+
+:RetrievalEvent rdf:type :RelationshipEvent ;
+    rdfs:label "Retrieval" ;
+    rdfs:comment "Memory retrieval process" .
+
+:CompactionEvent rdf:type :RelationshipEvent ;
+    rdfs:label "Compaction" ;
+    rdfs:comment "Context size reduction" .
+
+#################################################################
+#    Axioms & Constraints
+#################################################################
+
+# Disjoint classes
+[ rdf:type owl:AllDisjointClasses ;
+  owl:members ( :MemorySystem :ProcessingSystem :ActionSystem )
+] .
+
+# WorkingMemory must have exactly one capacity
+:WorkingMemory rdfs:subClassOf [
+    rdf:type owl:Restriction ;
+    owl:onProperty :hasCapacity ;
+    owl:cardinality 1
+] .
+
+# Reasoning requires at least one MemorySystem
+:Reasoning rdfs:subClassOf [
+    rdf:type owl:Restriction ;
+    owl:onProperty :retrievesFrom ;
+    owl:someValuesFrom :MemorySystem
+] .
+
+# RelationshipEvent must have source and target
+:RelationshipEvent rdfs:subClassOf [
+    rdf:type owl:Restriction ;
+    owl:onProperty :hasSource ;
+    owl:cardinality 1
+] .
+
+:RelationshipEvent rdfs:subClassOf [
+    rdf:type owl:Restriction ;
+    owl:onProperty :hasTarget ;
+    owl:cardinality 1
+] .
+
+#################################################################
+#    Example: Reified Relationship
+#    Working Memory consolidates to Episodic Memory
+#################################################################
+
+:wmConsolidation rdf:type :ConsolidationEvent ;
+    rdfs:label "Working Memory Consolidation" ;
+    :hasSource :workingMemoryInstance ;
+    :hasTarget :episodicMemoryInstance ;
+    :hasTrigger "capacity_exceeded" ;
+    :hasLatency "100"^^xsd:duration .
+
+# Participants with roles
+:workingMemoryInstance :participatesIn :wmConsolidation ;
+    :hasRole :SourceRole .
+
+:episodicMemoryInstance :participatesIn :wmConsolidation ;
+    :hasRole :TargetRole .
