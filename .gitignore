@@ -1,0 +1,20 @@
+# Sensitive files - DO NOT COMMIT
+*.token
+*auth*.json
+.env
+secrets/
+
+# OpenClaw config with tokens (use sanitized version)
+# ~/.openclaw/openclaw.json is NOT in this repo
+
+# Node modules if any
+node_modules/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.log
+*.tmp
+.cache/

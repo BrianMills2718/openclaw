@@ -1,6 +1,13 @@
-# OpenClaw Cognitive Architecture Framework
+# Moltbot / OpenClaw Project
 
-Complete reified hypergraph ontology for understanding and comparing agent cognitive architectures.
+**Complete OpenClaw setup, research, and cognitive architecture framework**
+
+This repository contains:
+1. ✅ **OpenClaw Discord integration** - Fully working setup
+2. ✅ **Cognitive architecture ontology** - Reified hypergraph framework
+3. ✅ **Interactive visualizations** - Drag, click, explore
+4. ✅ **Agent comparison tools** - Compare any agent architectures
+5. ✅ **Complete documentation** - Setup notes, status, next steps
 
 ## Quick Start on New Computer
 
@@ -50,11 +57,45 @@ http://localhost:8000/cognitive-network.html
 - **ONTOLOGY_README.md** - Complete reference
 - **COGNITIVE_ONTOLOGY.md** - Conceptual framework
 
+## Project Status
+
+**OpenClaw:** ✅ Fully operational
+- Discord bot active and responding
+- Gateway running on port 18789
+- Model: OpenAI Codex (gpt-5.2)
+- Memory system initialized
+- Session management working
+
+**See:** `OPENCLAW_STATUS.md` for complete current state and next steps
+
+## All Files Included
+
+### Setup & Status
+- **DISCORD_SETUP_NOTES.md** - Complete Discord integration guide
+- **OPENCLAW_STATUS.md** - Current status, config, next steps
+
+### Cognitive Architecture Framework
+- **COGNITIVE_ONTOLOGY.md** - Conceptual framework
+- **ONTOLOGY_STRUCTURE.md** - Core + Extensions design
+- **ONTOLOGY_README.md** - Complete reference
+- **QUICK_START.md** - How to use the framework
+- **cognitive-architecture.ttl** - Formal OWL ontology
+
+### Interactive Visualizations
+- **openclaw-cognitive.html** - ⭐ Main interactive graph
+- **agent-comparison.html** - Compare multiple agents
+- **openclaw-architecture.html** - Scenario-based flows
+- **cognitive-network.html** - Full ontology network
+
+### Data Files
+- **agent-instances.json** - OpenClaw, AutoGPT, Claude.ai, Minimal
+- **cognitive-network.json** - Network graph data
+
 ## Requirements
 
 - Python 3 (for HTTP server)
 - Modern web browser (Chrome, Firefox, Safari)
-- That's it!
+- That's it! (OpenClaw itself not required to view visualizations)
 
 ## Key Features
 
