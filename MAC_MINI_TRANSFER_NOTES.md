@@ -87,10 +87,20 @@ cp -r ~/projects/investigative_wiki/data/ /mnt/usb/transfer/wiki_data/
 # etc.
 ```
 
+### NEW: Task Graph Runner System (2026-02-16)
+
+| File | Size | Why |
+|------|------|-----|
+| `~/.openclaw/mcp_registry.toml` | <1K | MCP server startup configs for task graph runner. Uses `~` paths — portable. |
+| `~/projects/data/task_graph/model_floors.json` | <1K | Cumulative learning — proven min/max difficulty tiers per task. NOT regenerable. |
+| `~/projects/data/task_graph/experiments.jsonl` | varies | Historical experiment records. Optional but valuable for analyzer continuity. |
+
+These files are part of the `llm_client` task graph runner built on 2026-02-16. See `~/projects/moltbot/TASK_GRAPH_WIRING.md` for the full integration spec.
+
 ## Total Transfer Size
 
 - **Must transfer**: ~2.8G (mostly Discord exports)
-- **Nice to have**: ~950M (PDF cache, embeddings, old output)
+- **Nice to have**: ~950M (PDF cache, embeddings, old output) + task_graph data files
 - **Don't transfer**: ~9.7G (venvs, logs, caches)
 
 ## After Transfer: Mac Mini Setup
@@ -100,7 +110,23 @@ On the Mac Mini, after cloning repos and transferring data:
 # Each project needs its venv recreated
 cd ~/projects/sam_gov && python3 -m venv .venv && .venv/bin/pip install -e .
 cd ~/projects/investigative_wiki && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cd ~/projects/process_tracing && python3 -m venv test_env && test_env/bin/pip install -e universal_llm_kit/
+cd ~/projects/process_tracing && python3 -m venv .venv && .venv/bin/pip install -e .
 cd ~/projects/theory-forge && python3 -m venv .venv && .venv/bin/pip install -e .
 cd ~/projects/twitter_explorer && uv sync
+
+# llm_client (required by everything)
+cd ~/projects/llm_client && python3 -m venv .venv && .venv/bin/pip install -e ".[all-agents]"
+
+# Verify task graph runner
+python3 -c "from llm_client.task_graph import load_graph; print('ok')"
+
+# Generate MCP registry (or copy from WSL2)
+# See TASK_GRAPH_WIRING.md section 2
+
+# Dry-run smoke test
+~/.openclaw/bin/run_task.py --dry-run ~/.openclaw/tasks/templates/smoke_test.yaml
 ```
+
+See also:
+- `MAC_MINI_TOOLING_SETUP.md` — System tools, config files, MCP servers, venv recreation
+- `TASK_GRAPH_WIRING.md` — Task graph runner integration spec

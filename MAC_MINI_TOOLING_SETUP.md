@@ -135,10 +135,10 @@ echo "  grep -r '/home/brian' ~/.codex/ ~/.openclaw/ ~/.config/claude-cli-nodejs
 | intelligent-reddit-research | mcp-servers/intelligent-reddit-research | `.venv` | `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` |
 | dodaf | dodaf | `.venv` | `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` |
 | investigative-wiki | investigative_wiki | `.venv` | `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` |
-| process-tracing | process_tracing | `test_env` | `python3 -m venv test_env && test_env/bin/pip install -e universal_llm_kit/` |
+| process-tracing | process_tracing | `.venv` | `python3 -m venv .venv && .venv/bin/pip install -e .` |
 | theory-forge | theory-forge | `.venv` | `python3 -m venv .venv && .venv/bin/pip install -e .` |
-| qualitative-coding | qualitative_coding | `qc_env` | `python3 -m venv qc_env && qc_env/bin/pip install -r requirements.txt` |
-| conspiracy-epistemics | conspiracy_epistemics | `venv` | `python3 -m venv venv && venv/bin/pip install -r requirements.txt` |
+| qualitative-coding | qualitative_coding | `.venv` | `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` |
+| conspiracy-epistemics | conspiracy_epistemics | `.venv` | `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt` |
 
 **Conda server** (1 server):
 
@@ -424,21 +424,27 @@ cd "$PROJECTS_DIR/sam_gov" && .venv/bin/pip install -r requirements.txt
 # theory-forge uses pyproject.toml
 cd "$PROJECTS_DIR/theory-forge" && .venv/bin/pip install -e .
 
-# Non-standard venv names
-echo "=== process_tracing (test_env) ==="
+# Migrated to .venv (2026-02-15/16)
+echo "=== process_tracing ==="
 cd "$PROJECTS_DIR/process_tracing"
-python3 -m venv test_env
-test_env/bin/pip install -e universal_llm_kit/
+python3 -m venv .venv
+.venv/bin/pip install -e .
 
-echo "=== qualitative_coding (qc_env) ==="
+echo "=== qualitative_coding ==="
 cd "$PROJECTS_DIR/qualitative_coding"
-python3 -m venv qc_env
-qc_env/bin/pip install -r requirements.txt
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
 
-echo "=== conspiracy_epistemics (venv) ==="
+echo "=== conspiracy_epistemics ==="
 cd "$PROJECTS_DIR/conspiracy_epistemics"
-python3 -m venv venv
-venv/bin/pip install -r requirements.txt
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+# llm_client (shared library — install with all agent extras)
+echo "=== llm_client ==="
+cd "$PROJECTS_DIR/llm_client"
+python3 -m venv .venv
+.venv/bin/pip install -e ".[all-agents]"
 
 # uv-managed
 echo "=== twitter_explorer (uv) ==="
@@ -478,6 +484,8 @@ echo "Done. Test each server with: codex exec 'test mcp server X'"
 - [ ] All project `.env` files (see section 5)
 - [ ] All project `.mcp.json` files
 - [ ] Data files per `MAC_MINI_TRANSFER_NOTES.md`
+- [ ] `~/projects/data/task_graph/model_floors.json` (cumulative learning — not regenerable)
+- [ ] `~/projects/data/task_graph/experiments.jsonl` (optional — historical experiments)
 - [ ] `~/backups/claude-code/backup-claude-history.sh`
 - [ ] `~/bin/gemini-review` (custom script)
 
@@ -497,6 +505,10 @@ echo "Done. Test each server with: codex exec 'test mcp server X'"
 - [ ] Test each MCP server individually
 - [ ] Re-authenticate: `gh auth login`, OpenAI OAuth for Codex/OpenClaw
 - [ ] Verify: `codex exec "list available MCP tools"`
+- [ ] Generate `~/.openclaw/mcp_registry.toml` (see `TASK_GRAPH_WIRING.md` section 2)
+- [ ] Verify task graph runner: `python3 -c "from llm_client.task_graph import load_graph; print('ok')"`
+- [ ] Dry-run smoke test: `run_task.py --dry-run ~/.openclaw/tasks/templates/smoke_test.yaml`
+- [ ] Live smoke test: `run_task.py ~/.openclaw/tasks/templates/smoke_test.yaml`
 
 ---
 
