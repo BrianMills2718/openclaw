@@ -1,31 +1,25 @@
-# Moltbot / OpenClaw
+# ops/openclaw
 
-OpenClaw Discord bot setup project.
+This directory contains the versioned OpenClaw runtime assets mirrored from the
+live `$HOME/.openclaw` runtime.
 
-## What This Is
+## Use This Directory For
 
-This repo contains setup notes and configuration for running OpenClaw (formerly Moltbot) as a Discord bot.
+- queue runner and review-cycle code
+- runtime defaults and launch utilities
+- versioned prompt, schema, and template assets
 
-## Key Files
+## Route Narrower Work
 
-- `DISCORD_SETUP_NOTES.md` — Complete Discord integration guide
-- `OPENCLAW_STATUS.md` — Current status, auth config, services, next steps
-- `TASK_GRAPH_WIRING.md` — How run_task.py evolves to support YAML task graphs (via llm_client.task_graph)
-- `MAC_MINI_TRANSFER_NOTES.md` — Large files not in git that need manual transfer
-- `MAC_MINI_TOOLING_SETUP.md` — System tools, configs, MCP servers, venv recreation for Mac Mini
+- prompt templates -> `prompts/`
+- report schemas -> `schemas/`
+- task graph templates -> `templates/`
 
-## OpenClaw Service
+## Working Rules
 
-- **Gateway**: systemd user service on port 18789
-- **Model**: gpt-5.2 via OpenAI Codex OAuth
-- **Config**: `~/.openclaw/openclaw.json`
-- **Workspace**: `~/.openclaw/workspace/`
-
-## Related Projects
-
-- **agent_ontology** (`/home/brian/projects/agent_ontology`) — Cognitive architecture ontology framework (evolved from early work in this repo)
-- **sam_gov** (`/home/brian/sam_gov`) — Research platform with MCP tools
-
-## Archive
-
-`archive/ontology_2026-02-05/` contains superseded ontology work. See that directory's README for details.
+- The mirror path in this repo is canonical. The runtime path under
+  `$HOME/.openclaw` should be a symlink to these files, not a hand-maintained
+  copy.
+- OpenClaw is an orchestration layer, not the home of repo-local governance.
+- When runtime behavior changes, update tests and README-level operator docs in
+  the same change.

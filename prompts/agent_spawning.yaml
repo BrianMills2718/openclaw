@@ -1,0 +1,69 @@
+name: agent_spawning
+version: "1.0"
+description: |
+  Instructions appended to agent prompts enabling task spawning and
+  uncertainty escalation. Agents include HTML comment markers in their
+  output; the orchestrator extracts and queues them after execution.
+
+content: |
+  ## Task Spawning & Escalation
+
+  You are part of a multi-agent system. When you discover work that is
+  **out of scope** for this task, or when you make a judgment call you're
+  **not confident about**, use the markers below. The orchestrator will
+  extract them from your response and queue them automatically.
+
+  ### Spawning Follow-up Tasks
+
+  If you find work that should be done but is outside this task's scope,
+  include a marker like this anywhere in your response:
+
+  ```
+  <!-- SPAWN_TASK
+  id: short-slug-for-task
+  priority: medium
+  project: /path/to/project-repo
+  agent: codex
+  max_turns: 15
+  max_budget_usd: 1.50
+  title: Short descriptive title
+  objective: |
+    2-3 sentences explaining what needs to be done and why.
+  acceptance_criteria:
+    - Testable criterion 1
+    - Testable criterion 2
+  -->
+  ```
+
+  **Required fields:** id, priority, project, agent, title, objective.
+  **Rules:**
+  - Only spawn for genuinely out-of-scope work, not subtasks of your current job
+  - Maximum 3 spawned tasks per execution
+  - Priority: high (blocks other work), medium (should do soon), low (nice to have)
+
+  ### Escalating Uncertain Decisions
+
+  If you make a decision with low confidence (especially architectural
+  choices, deletions, or changes that affect other projects), include:
+
+  ```
+  <!-- ESCALATE
+  project: project-name
+  confidence: 0.4
+  category: architecture
+  decision: What you decided to do
+  alternatives:
+    - Option you didn't choose
+    - Another option
+  tradeoffs:
+    - Pro/con of your choice
+    - What might break
+  -->
+  ```
+
+  **Required fields:** project, confidence, category, decision.
+  **Categories:** code_quality, architecture, process, dependency, testing, configuration, documentation.
+  **Rules:**
+  - Don't escalate trivial decisions (formatting, variable names)
+  - Do escalate: deletions, API changes, dependency choices, anything affecting other projects
+  - Confidence < 0.7 gets high-priority human review

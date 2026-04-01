@@ -1,64 +1,114 @@
-# Moltbot / OpenClaw
+# OpenClaw Task Runner Assets
 
-OpenClaw Discord bot setup and configuration.
+Versioned mirror of runtime assets currently executed from `$HOME/.openclaw`.
 
-> Moltbot was renamed to **OpenClaw** on Jan 29 2026 due to a trademark issue.
-> The `moltbot` npm package still works but docs have moved to `docs.openclaw.ai`.
+Purpose:
+- Keep long-running orchestration scripts/templates under git.
+- Make runner behavior reproducible and reviewable.
 
-## Current Status
+Files:
+- `run_task.py` — queue runner with `--loop` supervisor mode.
+- `templates/multi_agent_handoff.yaml` — example DAG for Gemini -> Codex -> Claude handoff.
+- `launch_review_cycle.py` — graph generator for implementation/review loops with rolling context packs.
+- `review_cycle.defaults.yaml` — config defaults for launcher agents/models/rounding/context behavior.
+- `task_planner.py` — goal-aware task generator for pending task queue creation.
+- `prompts/task_planner.yaml` — planner system/user prompt template.
+- `schemas/flat_task_report.schema.json` — JSON Schema for flat-task report payloads.
+- `schemas/graph_task_report.schema.json` — JSON Schema for graph-task report payloads.
 
-- **Gateway**: systemd user service (`openclaw-gateway.service`) on port 18789
-- **Model**: gpt-5.2 via OpenAI Codex OAuth
-- **Discord**: Bot active, responding to @mentions and DMs
-- **Config**: `~/.openclaw/openclaw.json`
-- **Workspace**: `~/.openclaw/workspace/`
+Runtime behavior (current):
+- Flat tasks run deterministic preflight checks before execution (`project path`, `agent`, `budget`, `git repo`).
+- Flat tasks now require explicit `model:` declarations at execution time.
+- `--loop` now refuses to start when pending or active tasks still have model
+  gaps, unless operators pass `--allow-legacy`.
+- Review-cycle defaults remain intentionally conservative in this plan: the
+  default review lane stays `agent: direct` with `model: gpt-5.2-pro` unless a
+  caller overrides it with an explicit config file.
+- Graph tasks run deterministic preflight checks before execution (`non-empty graph`, `waves`, `MCP server configs`).
+- Every run emits one structured JSON report to `OPENCLAW_REPORTS_DIR` (default: `$HOME/.openclaw/tasks/reports`).
+- Reports include `primary_failure_class` and `failure_event_codes`.
+- Reports include `decision_provenance` (schema `v1`) for dispatch/preflight/execution/routing/error decisions.
+- Task prompts point agents back to repo-local governance (`CLAUDE.md`,
+  generated `AGENTS.md`, and `scripts/relationships.yaml` when present) rather
+  than introducing an OpenClaw-only policy file.
+- Operators can audit and migrate legacy flat tasks before stricter supervisor
+  gating lands:
+  - `python ops/openclaw/run_task.py --scan-model-gaps`
+  - `python ops/openclaw/run_task.py --repair-flat-models`
+  - `python ops/openclaw/run_task.py --repair-flat-models --repair-default-model <model> --apply-repairs`
+  - `python ops/openclaw/run_task.py --loop --allow-legacy`
 
-See `OPENCLAW_STATUS.md` for full status, configuration details, and next steps.
+Governance boundary:
+- OpenClaw is an orchestration layer, not the canonical home of per-repo rules.
+- Repo-local governance should stay in the target repo's `CLAUDE.md` and
+  `scripts/relationships.yaml`.
+- `AGENTS.md` should be a generated Codex-oriented projection of that same
+repo-local governance.
 
-## Quick Start
+Operator contract:
 
-```bash
-# Install
-npm install -g openclaw@latest
+- Human provides: mission objective, repo-local success criteria, and a clear
+  maximum-authority boundary for each run.
+- OpenClaw executes: bounded task cycles, runs review/proposal cycle hooks,
+  evaluates mission success criteria, and stops only on completion or an
+  explicit escalation condition.
+- Human intervention required for: strategic ambiguity, repeated local repair
+  failure, missing external dependencies/credentials, and explicit policy-limit
+  hits.
 
-# Set up Discord integration
-export DISCORD_BOT_TOKEN="your-token"
-openclaw onboard --install-daemon
+Mission success criteria contract:
 
-# Verify
-openclaw channels status --probe
+- Repo contract path: `.openclaw/success-criteria.yaml`.
+- OpenClaw expects one of:
+  - inline `success_criteria` in the mission YAML
+  - or (if omitted) auto-loads `.openclaw/success-criteria.yaml` from the repo.
+- Contract format:
+
+```yaml
+version: 1
+success_criteria:
+  - type: plan_checklist_clear
+    path: path/to/plan.md
+  - type: file_exists
+    path: path/to/artifact.txt
+  - type: command
+    command:
+      - python
+      - -c
+      - "import pathlib,sys; sys.exit(0 if pathlib.Path('ready.txt').exists() else 1)"
+    cwd: .
+    description: prove readiness
 ```
 
-See `DISCORD_SETUP_NOTES.md` for the complete Discord setup guide (bot creation, intents, OAuth2, guild config, DMs, troubleshooting).
+This contract is intended to be machine-readable and explicit, so OpenClaw runs can
+be governed by objective-level criteria instead of ad hoc assumptions.
 
-## Key Files
+Ownership boundary (2026-03-31):
+- Status: stable in project-meta, pending extraction to own repo
+- Planned target: `agent-task-supervisor` (see vision/ROADMAP.md Phase 3.4)
+- Current couplings preventing extraction:
+  - imports `scripts.meta.task_graph` and `scripts.meta.analyzer` (project-meta internal)
+  - imports `agentic_scaffolding` (external shared infra, pip-installable)
+  - imports `llm_client` (external shared infra, pip-installable)
+- Extraction prerequisite: `scripts.meta.task_graph` must either move with
+  openclaw or be published as a standalone package
+- No new orchestration features should be added here until extraction decision
+  is made
 
-| File | Purpose |
-|------|---------|
-| `DISCORD_SETUP_NOTES.md` | Complete Discord integration guide |
-| `OPENCLAW_STATUS.md` | Current status, auth, services, next steps |
+Sync note:
+- Runtime path: `$HOME/.openclaw/bin/run_task.py`
+- Mirror path: `project-meta/ops/openclaw/run_task.py`
+- Canonical source of truth is the mirror path.
+- Runtime path must be a symlink to the mirror path (no manual copies).
+- Install/update symlink:
+  - `bash project-meta/ops/openclaw/install_runtime_runner.sh`
+- Verify sync:
+  - `bash project-meta/ops/openclaw/verify_runtime_runner.sh`
 
-## Useful Commands
+Schema validation tests:
+- `pytest -q project-meta/tests/test_openclaw_report_schema.py`
 
-```bash
-# Gateway management
-systemctl --user status openclaw-gateway
-systemctl --user restart openclaw-gateway
-journalctl --user -u openclaw-gateway -f
-
-# OpenClaw CLI
-openclaw config get
-openclaw sessions
-openclaw skills
-openclaw doctor
-```
-
-## Resources
-
-- **Docs**: https://docs.openclaw.ai
-- **GitHub**: https://github.com/openclaw/openclaw
-- **ClawdHub**: https://clawdhub.com
-
-## Archive
-
-The `archive/ontology_2026-02-05/` directory contains cognitive architecture ontology work from the initial session. This work has been superseded by the `agent_ontology` project (`/home/brian/projects/agent_ontology`).
+Local-first operation:
+- GitHub workflow `enforcement-checks.yml` is manual-dispatch only.
+- Daily governance loop should run locally with:
+  - `bash project-meta/scripts/run_local_daily_audit.sh`

@@ -1,0 +1,57 @@
+# Default configuration for automated implementation/review cycles.
+# Override with --config in launch_review_cycle.py.
+
+# Home-relative runtime defaults (portable across users/hosts).
+queue_dir: ~/.openclaw/tasks/pending
+workspace_dir: ~/.openclaw/workspace/review-cycles
+
+cycle:
+  rounds: 3
+  timeout_minutes: 180
+  checkpoint: none
+  max_rounds: 8
+
+context_pack:
+  enabled: true
+  filename: context_pack.md
+
+agents:
+  implement:
+    agent: codex
+    # Optional explicit model override. Leave null to use difficulty routing.
+    model: null
+    difficulty: 3
+    mcp_servers: []
+  review:
+    # Deliberate Plan 07 baseline:
+    # keep the direct gpt-5.2-pro review lane as the default until a
+    # benchmark-backed comparison justifies a different review agent/model.
+    # Uses background mode (5-10 min thinking) via llm_client Responses API polling.
+    # Set agent/model explicitly in an override config to change this policy.
+    agent: direct
+    model: gpt-5.2-pro
+    reasoning_effort: xhigh
+    difficulty: 5
+    mcp_servers: []
+  context:
+    agent: codex
+    model: gemini/gemini-2.5-flash
+    difficulty: 2
+    mcp_servers: []
+  synthesis:
+    agent: codex
+    model: gemini/gemini-2.5-flash
+    difficulty: 2
+    mcp_servers: []
+
+validation:
+  require_json_review: true
+
+# Cost guardrails
+cost:
+  # Max total cost per review cycle (all rounds combined)
+  max_cycle_cost_usd: 10.0
+  # Tasks exceeding this per-round cost trigger a warning
+  warn_round_cost_usd: 5.0
+  # gpt-5.2-pro is reserved for convergence/architecture reviews only.
+  # Routine fixes should use cheaper models via difficulty routing.

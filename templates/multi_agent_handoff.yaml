@@ -1,0 +1,57 @@
+graph:
+  id: multi_agent_handoff_template
+  description: "Example handoff chain across Gemini, Codex, and Claude Code"
+  timeout_minutes: 90
+  checkpoint: none
+
+tasks:
+  scout:
+    difficulty: 1
+    agent: codex
+    # Non-agent provider model: routes through llm_client tool loop (MCP enabled)
+    model: gemini/gemini-2.5-flash
+    prompt: |
+      Use sam_gov and usaspending MCP tools to find 3 recent items related to
+      "federal AI procurement" and write concise bullets to
+      ~/.openclaw/workspace/outputs/scout_notes.md.
+    mcp_servers:
+      - sam-gov-government
+    validate:
+      - type: file_exists
+        path: ~/.openclaw/workspace/outputs/scout_notes.md
+    outputs:
+      scout_notes: ~/.openclaw/workspace/outputs/scout_notes.md
+
+  implement:
+    difficulty: 3
+    agent: codex
+    depends_on: [scout]
+    model: codex
+    prompt: |
+      Read {scout.outputs.scout_notes}. Implement the highest-value code/doc
+      update implied by the notes in the target repo. Run tests relevant to
+      changed files and summarize what changed in
+      ~/.openclaw/workspace/outputs/implementation_notes.md.
+    working_directory: /path/to/target/repo
+    validate:
+      - type: file_exists
+        path: ~/.openclaw/workspace/outputs/implementation_notes.md
+    outputs:
+      impl_notes: ~/.openclaw/workspace/outputs/implementation_notes.md
+
+  review:
+    difficulty: 4
+    agent: claude-code
+    depends_on: [implement]
+    model: claude-code
+    prompt: |
+      Perform a critical review of the implementation captured in
+      {implement.outputs.impl_notes}. Identify regression risks, missing tests,
+      and concrete fixes. Write a release recommendation to
+      ~/.openclaw/workspace/outputs/review_decision.md.
+    working_directory: /path/to/target/repo
+    validate:
+      - type: file_exists
+        path: ~/.openclaw/workspace/outputs/review_decision.md
+    outputs:
+      release_note: ~/.openclaw/workspace/outputs/review_decision.md

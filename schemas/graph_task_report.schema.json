@@ -1,0 +1,256 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://project-meta.local/ops/openclaw/schemas/graph_task_report.schema.json",
+  "title": "OpenClaw Graph Task Report",
+  "type": "object",
+  "required": [
+    "report_version",
+    "task_type",
+    "task_file",
+    "graph_id",
+    "status",
+    "started_at"
+  ],
+  "properties": {
+    "report_version": {
+      "type": "string",
+      "const": "v1"
+    },
+    "task_type": {
+      "type": "string",
+      "const": "graph"
+    },
+    "task_file": {
+      "type": "string",
+      "minLength": 1
+    },
+    "graph_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "running",
+        "skipped_budget",
+        "failed_preflight",
+        "completed",
+        "failed",
+        "failed_exception"
+      ]
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "destination": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "failed"
+      ]
+    },
+    "preflight": {
+      "$ref": "#/definitions/preflight"
+    },
+    "run": {
+      "type": "object",
+      "required": [
+        "total_cost_usd",
+        "total_duration_s",
+        "waves_completed",
+        "waves_total",
+        "task_results_count"
+      ],
+      "properties": {
+        "total_cost_usd": {
+          "type": "number"
+        },
+        "total_duration_s": {
+          "type": "number"
+        },
+        "waves_completed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "waves_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "task_results_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "decision_provenance": {
+      "$ref": "#/definitions/decision_provenance"
+    },
+    "primary_failure_class": {
+      "type": "string",
+      "enum": [
+        "none",
+        "provider",
+        "composability",
+        "policy",
+        "retrieval",
+        "control_churn",
+        "reasoning"
+      ]
+    },
+    "failure_event_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "failure_event_code_counts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "exception": {
+      "type": "string"
+    }
+  },
+  "definitions": {
+    "preflight": {
+      "type": "object",
+      "required": [
+        "passed",
+        "checks",
+        "failures",
+        "failure_event_codes",
+        "primary_failure_class"
+      ],
+      "properties": {
+        "passed": {
+          "type": "boolean"
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "check",
+              "passed"
+            ],
+            "properties": {
+              "check": {
+                "type": "string"
+              },
+              "passed": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "failures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "error_code",
+              "message"
+            ],
+            "properties": {
+              "error_code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "failure_event_codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "primary_failure_class": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "decision_provenance": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "events"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "const": "v1"
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/decision_event"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "decision_event": {
+      "type": "object",
+      "required": [
+        "decision_at",
+        "decision_stage",
+        "selected_action",
+        "decision_reason",
+        "alternatives_considered_count"
+      ],
+      "properties": {
+        "decision_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "decision_stage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selected_action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decision_reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "alternatives_considered_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "decision_source": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}
