@@ -39,5 +39,10 @@ Measured pattern:
   `Command failed with exit code 1 ... Check stderr output for details`
 
 `run_task.py` now treats only that narrow generic post-success error family as
-recoverable, and only when commit detection plus post-validation support
-success. Keep the rule narrow; do not widen it to arbitrary runtime exceptions.
+recoverable, and only when either:
+
+- commit detection plus post-validation support success, or
+- meaningful bounded source-file changes (excluding `.claude/hook_log.jsonl`)
+  plus post-validation support success
+
+Keep the rule narrow; do not widen it to arbitrary runtime exceptions.

@@ -47,11 +47,32 @@ def test_recoverable_reason_preserves_empty_error_path() -> None:
     assert reason == "empty agent error after bounded work"
 
 
-def test_postsuccess_recovery_requires_detected_commit(
+def test_meaningful_new_status_lines_ignores_hook_log_only() -> None:
+    """Hook-log-only churn is not treated as meaningful recovery evidence."""
+
+    assert (
+        run_task._meaningful_new_status_lines(
+            "",
+            "?? .claude/hook_log.jsonl",
+        )
+        == []
+    )
+
+
+def test_meaningful_new_status_lines_keeps_bounded_source_edits() -> None:
+    """Real source-file edits remain visible to the recovery gate."""
+
+    assert run_task._meaningful_new_status_lines(
+        "",
+        " M README.md\n M src/json_diff/cli.py\n?? .claude/hook_log.jsonl",
+    ) == [" M README.md", " M src/json_diff/cli.py"]
+
+
+def test_postsuccess_recovery_requires_commit_or_meaningful_changes(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    """Commit evidence remains mandatory before recovery can trigger."""
+    """Recovery requires commit evidence or meaningful bounded changes."""
 
     task = _task(tmp_path)
     error_text = (
@@ -60,13 +81,26 @@ def test_postsuccess_recovery_requires_detected_commit(
     )
 
     monkeypatch.setattr(run_task, "_agent_committed", lambda task: False)
-    assert run_task._postsuccess_recovery_reason(task, "LLMError", error_text) is None
+    monkeypatch.setattr(run_task, "_agent_produced_meaningful_changes", lambda task, pre_status: [])
+    assert run_task._postsuccess_recovery_context(task, "LLMError", error_text, "") is None
 
     monkeypatch.setattr(run_task, "_agent_committed", lambda task: True)
+    monkeypatch.setattr(run_task, "_agent_produced_meaningful_changes", lambda task, pre_status: [])
     assert (
-        run_task._postsuccess_recovery_reason(task, "LLMError", error_text)
+        run_task._postsuccess_recovery_context(task, "LLMError", error_text, "")["reason"]
         == "generic claude agent subprocess exit after bounded work"
     )
+
+    monkeypatch.setattr(run_task, "_agent_committed", lambda task: False)
+    monkeypatch.setattr(
+        run_task,
+        "_agent_produced_meaningful_changes",
+        lambda task, pre_status: [" M src/json_diff/cli.py"],
+    )
+    context = run_task._postsuccess_recovery_context(task, "LLMError", error_text, "")
+    assert context is not None
+    assert context["committed"] is False
+    assert context["changed_lines"] == [" M src/json_diff/cli.py"]
 
 
 def test_non_measured_error_family_does_not_recover(
@@ -79,10 +113,11 @@ def test_non_measured_error_family_does_not_recover(
     monkeypatch.setattr(run_task, "_agent_committed", lambda task: True)
 
     assert (
-        run_task._postsuccess_recovery_reason(
+        run_task._postsuccess_recovery_context(
             task,
             "RuntimeError",
             "permission denied while starting sandbox",
+            "",
         )
         is None
     )

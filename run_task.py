@@ -571,19 +571,61 @@ def _recoverable_postsuccess_agent_error_reason(
     return None
 
 
-def _postsuccess_recovery_reason(
+def _meaningful_new_status_lines(
+    pre_status: str,
+    post_status: str,
+) -> list[str]:
+    """Return new git-status lines that represent meaningful work product."""
+
+    ignored = {"?? .claude/hook_log.jsonl"}
+    pre_lines = {line for line in pre_status.splitlines() if line.strip()}
+    post_lines = {line for line in post_status.splitlines() if line.strip()}
+    return sorted((post_lines - pre_lines) - ignored)
+
+
+def _agent_produced_meaningful_changes(
+    task: TaskSpec,
+    pre_status: str,
+) -> list[str]:
+    """Return meaningful new worktree status lines for a task."""
+
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=task.project,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception:
+        return []
+    return _meaningful_new_status_lines(pre_status, result.stdout.strip())
+
+
+def _postsuccess_recovery_context(
     task: TaskSpec,
     error_type: str,
     error_text: str,
-) -> str | None:
-    """Return the bounded recovery reason when commit evidence supports it."""
+    pre_status: str,
+) -> dict[str, Any] | None:
+    """Return bounded recovery context when evidence supports recovery."""
 
     reason = _recoverable_postsuccess_agent_error_reason(error_type, error_text)
     if reason is None:
         return None
-    if not _agent_committed(task):
+
+    committed = _agent_committed(task)
+    changed_lines = _agent_produced_meaningful_changes(task, pre_status)
+    if not committed and not changed_lines:
         return None
-    return reason
+
+    return {
+        "reason": reason,
+        "committed": committed,
+        "changed_lines": changed_lines,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1607,17 +1649,24 @@ async def _run_flat_task(task_path: Path, *, parent_trace_id: str | None = None)
         err_msg = str(e).strip()
         log.error("Task execution failed: %s: %s\n%s", type(e).__name__, e, tb)
 
-        recovery_reason = _postsuccess_recovery_reason(task, type(e).__name__, err_msg)
-        if recovery_reason is not None:
+        recovery_context = _postsuccess_recovery_context(
+            task,
+            type(e).__name__,
+            err_msg,
+            pre_status,
+        )
+        if recovery_context is not None:
             log.warning(
-                "Recoverable post-success agent error: %s", recovery_reason
+                "Recoverable post-success agent error: %s",
+                recovery_context["reason"],
             )
             _record_decision_event(
                 report_payload,
                 decision_stage="error_handling",
                 selected_action="treat_postsuccess_agent_error_as_recoverable",
                 decision_reason=(
-                    f"{recovery_reason}; detected recent commit, "
+                    f"{recovery_context['reason']}; detected commit or meaningful "
+                    "bounded changes, "
                     "running validation before routing"
                 ),
             )
@@ -1627,6 +1676,12 @@ async def _run_flat_task(task_path: Path, *, parent_trace_id: str | None = None)
                 active_path,
                 f"Recovered post-success agent error: {type(e).__name__}: {e}",
             )
+            if recovery_context["changed_lines"]:
+                _append_status_log(
+                    active_path,
+                    "Recovery evidence — meaningful new changes:\n"
+                    + "\n".join(recovery_context["changed_lines"]),
+                )
             validation_passed, validation_details = _run_validation(task, pre_status)
             _append_status_log(active_path, f"Validation: {'PASS' if validation_passed else 'FAIL'} — {validation_details}")
             destination = "completed" if validation_passed else "failed"
@@ -1646,7 +1701,11 @@ async def _run_flat_task(task_path: Path, *, parent_trace_id: str | None = None)
                 "details": validation_details,
             }
             report_payload["recovered_exception"] = f"{type(e).__name__}: {e}"
-            report_payload["recovery_reason"] = recovery_reason
+            report_payload["recovery_reason"] = recovery_context["reason"]
+            report_payload["recovery_signal"] = {
+                "committed": recovery_context["committed"],
+                "changed_lines": recovery_context["changed_lines"],
+            }
             report_payload["primary_failure_class"] = report_payload.get("primary_failure_class") or "none"
             report_payload["failure_event_codes"] = report_payload.get("failure_event_codes") or []
             report_payload["finished_at"] = datetime.now(timezone.utc).isoformat()
