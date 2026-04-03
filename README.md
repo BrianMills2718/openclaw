@@ -104,6 +104,17 @@ Sync note:
   - `bash project-meta/ops/openclaw/install_runtime_runner.sh`
 - Verify sync:
   - `bash project-meta/ops/openclaw/verify_runtime_runner.sh`
+- Runtime import bootstrap:
+  - `run_task.py` and `task_planner.py` prepend shared repo roots from
+    `${PROJECTS_ROOT:-$HOME/projects}` so `llm_client` resolves to its public
+    facade even when editable installs expose only the repo-root namespace.
+- Runtime Python contract:
+  - the interpreter used for task execution must import both
+    `from llm_client import acall_llm` and `claude_agent_sdk`
+  - `verify_runtime_runner.sh` checks that contract using
+    `${OPENCLAW_RUNTIME_PYTHON:-python3}`
+  - if it fails, install the shared agent extra with:
+    `python3 -m pip install -e "${PROJECTS_ROOT:-$HOME/projects}/llm_client[agents]"`
 
 Schema validation tests:
 - `pytest -q project-meta/tests/test_openclaw_report_schema.py`
