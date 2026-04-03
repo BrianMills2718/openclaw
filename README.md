@@ -28,6 +28,10 @@ Runtime behavior (current):
 - Every run emits one structured JSON report to `OPENCLAW_REPORTS_DIR` (default: `$HOME/.openclaw/tasks/reports`).
 - Reports include `primary_failure_class` and `failure_event_codes`.
 - Reports include `decision_provenance` (schema `v1`) for dispatch/preflight/execution/routing/error decisions.
+- When a bounded agent run leaves a real commit or meaningful bounded source
+  edits and passes post-validation, `run_task.py` now records bounded
+  post-success recovery instead of treating a generic Claude subprocess exit as
+  an automatic hard failure.
 - Task prompts point agents back to repo-local governance (`CLAUDE.md`,
   generated `AGENTS.md`, and `scripts/relationships.yaml` when present) rather
   than introducing an OpenClaw-only policy file.
@@ -104,6 +108,17 @@ Sync note:
   - `bash project-meta/ops/openclaw/install_runtime_runner.sh`
 - Verify sync:
   - `bash project-meta/ops/openclaw/verify_runtime_runner.sh`
+- Runtime import bootstrap:
+  - `run_task.py` and `task_planner.py` prepend shared repo roots from
+    `${PROJECTS_ROOT:-$HOME/projects}` so `llm_client` resolves to its public
+    facade even when editable installs expose only the repo-root namespace.
+- Runtime Python contract:
+  - the interpreter used for task execution must import both
+    `from llm_client import acall_llm` and `claude_agent_sdk`
+  - `verify_runtime_runner.sh` checks that contract using
+    `${OPENCLAW_RUNTIME_PYTHON:-python3}`
+  - if it fails, install the shared agent extra with:
+    `python3 -m pip install -e "${PROJECTS_ROOT:-$HOME/projects}/llm_client[agents]"`
 
 Schema validation tests:
 - `pytest -q project-meta/tests/test_openclaw_report_schema.py`

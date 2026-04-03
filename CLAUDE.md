@@ -24,6 +24,11 @@ bash install_runtime_runner.sh
 bash verify_runtime_runner.sh
 ```
 
+`run_task.py` and `task_planner.py` bootstrap shared repo roots from
+`${PROJECTS_ROOT:-$HOME/projects}` so `llm_client` resolves through its public
+facade during local-first runs. `verify_runtime_runner.sh` must pass before
+claiming the runtime path is usable on the current host.
+
 ## Working Rules
 
 - OpenClaw is an orchestration layer, not the home of repo-local governance

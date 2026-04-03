@@ -41,6 +41,29 @@ from typing import Any
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
+
+def _prepend_repo_root_if_present(path: Path) -> None:
+    """Prepend a repo root to sys.path when it exists and is not already present."""
+
+    if not path.is_dir():
+        return
+    resolved = str(path.resolve())
+    if resolved not in sys.path:
+        sys.path.insert(0, resolved)
+
+
+def _bootstrap_shared_import_roots() -> None:
+    """Expose shared editable repos through stable repo-root import paths."""
+
+    projects_root = Path(
+        os.environ.get("PROJECTS_ROOT", str(Path.home() / "projects"))
+    ).expanduser().resolve()
+    for repo_name in ("llm_client",):
+        _prepend_repo_root_if_present(projects_root / repo_name)
+
+
+_bootstrap_shared_import_roots()
+
 # Paths
 HOME = Path.home()
 PROJECTS_DIR = Path(

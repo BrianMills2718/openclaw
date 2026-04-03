@@ -32,6 +32,36 @@ from typing import Any
 
 import yaml
 
+
+def _prepend_repo_root_if_present(path: Path) -> None:
+    """Prepend a repo root to sys.path when it exists and is not already present."""
+
+    if not path.is_dir():
+        return
+    resolved = str(path.resolve())
+    if resolved not in sys.path:
+        sys.path.insert(0, resolved)
+
+
+def _bootstrap_shared_import_roots() -> None:
+    """Expose shared editable repos through stable repo-root import paths.
+
+    The local-first runtime often executes from a shared environment where an
+    editable install of ``llm_client`` resolves to the repo root namespace
+    instead of the inner package facade. Prepending the shared repo roots keeps
+    the public imports (`from llm_client import ...`) truthful without relying
+    on one-off operator shell mutations.
+    """
+
+    projects_root = Path(
+        os.environ.get("PROJECTS_ROOT", str(Path.home() / "projects"))
+    ).expanduser().resolve()
+    for repo_name in ("llm_client", "agentic_scaffolding"):
+        _prepend_repo_root_if_present(projects_root / repo_name)
+
+
+_bootstrap_shared_import_roots()
+
 # Ensure sibling modules (spawn_extract) are importable
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 # Ensure project-meta root is importable (for scripts.meta.task_graph, scripts.meta.analyzer)
@@ -514,6 +544,88 @@ def _agent_committed(task: TaskSpec) -> bool:
         return bool(result.stdout.strip())
     except Exception:
         return False
+
+
+def _recoverable_postsuccess_agent_error_reason(
+    error_type: str,
+    error_text: str,
+) -> str | None:
+    """Return a recovery reason for bounded post-success agent failures.
+
+    This is intentionally narrow. We only recover from the measured Claude
+    agent false-negative family where the subprocess exits generically after the
+    agent has already completed bounded work.
+    """
+
+    normalized = error_text.strip()
+    if not normalized:
+        return "empty agent error after bounded work"
+
+    if (
+        error_type == "LLMError"
+        and "Command failed with exit code 1" in normalized
+        and "Check stderr output for details" in normalized
+    ):
+        return "generic claude agent subprocess exit after bounded work"
+
+    return None
+
+
+def _meaningful_new_status_lines(
+    pre_status: str,
+    post_status: str,
+) -> list[str]:
+    """Return new git-status lines that represent meaningful work product."""
+
+    ignored = {"?? .claude/hook_log.jsonl"}
+    pre_lines = {line for line in pre_status.splitlines() if line.strip()}
+    post_lines = {line for line in post_status.splitlines() if line.strip()}
+    return sorted((post_lines - pre_lines) - ignored)
+
+
+def _agent_produced_meaningful_changes(
+    task: TaskSpec,
+    pre_status: str,
+) -> list[str]:
+    """Return meaningful new worktree status lines for a task."""
+
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=task.project,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception:
+        return []
+    return _meaningful_new_status_lines(pre_status, result.stdout.strip())
+
+
+def _postsuccess_recovery_context(
+    task: TaskSpec,
+    error_type: str,
+    error_text: str,
+    pre_status: str,
+) -> dict[str, Any] | None:
+    """Return bounded recovery context when evidence supports recovery."""
+
+    reason = _recoverable_postsuccess_agent_error_reason(error_type, error_text)
+    if reason is None:
+        return None
+
+    committed = _agent_committed(task)
+    changed_lines = _agent_produced_meaningful_changes(task, pre_status)
+    if not committed and not changed_lines:
+        return None
+
+    return {
+        "reason": reason,
+        "committed": committed,
+        "changed_lines": changed_lines,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1537,19 +1649,39 @@ async def _run_flat_task(task_path: Path, *, parent_trace_id: str | None = None)
         err_msg = str(e).strip()
         log.error("Task execution failed: %s: %s\n%s", type(e).__name__, e, tb)
 
-        # Codex SDK sometimes sends turn.failed with empty message even when
-        # the agent completed its work. Check if git shows a new commit.
-        if not err_msg and _agent_committed(task):
-            log.warning("Empty error but agent committed changes — treating as success")
+        recovery_context = _postsuccess_recovery_context(
+            task,
+            type(e).__name__,
+            err_msg,
+            pre_status,
+        )
+        if recovery_context is not None:
+            log.warning(
+                "Recoverable post-success agent error: %s",
+                recovery_context["reason"],
+            )
             _record_decision_event(
                 report_payload,
                 decision_stage="error_handling",
-                selected_action="treat_empty_error_as_recoverable",
-                decision_reason="empty SDK error with detected commit; running validation before routing",
+                selected_action="treat_postsuccess_agent_error_as_recoverable",
+                decision_reason=(
+                    f"{recovery_context['reason']}; detected commit or meaningful "
+                    "bounded changes, "
+                    "running validation before routing"
+                ),
             )
             if active_path is None:
                 active_path = _move_task(task_path, "active")
-            _append_status_log(active_path, "Agent error was empty but commit detected — treating as success")
+            _append_status_log(
+                active_path,
+                f"Recovered post-success agent error: {type(e).__name__}: {e}",
+            )
+            if recovery_context["changed_lines"]:
+                _append_status_log(
+                    active_path,
+                    "Recovery evidence — meaningful new changes:\n"
+                    + "\n".join(recovery_context["changed_lines"]),
+                )
             validation_passed, validation_details = _run_validation(task, pre_status)
             _append_status_log(active_path, f"Validation: {'PASS' if validation_passed else 'FAIL'} — {validation_details}")
             destination = "completed" if validation_passed else "failed"
@@ -1567,6 +1699,12 @@ async def _run_flat_task(task_path: Path, *, parent_trace_id: str | None = None)
             report_payload["validation"] = {
                 "passed": validation_passed,
                 "details": validation_details,
+            }
+            report_payload["recovered_exception"] = f"{type(e).__name__}: {e}"
+            report_payload["recovery_reason"] = recovery_context["reason"]
+            report_payload["recovery_signal"] = {
+                "committed": recovery_context["committed"],
+                "changed_lines": recovery_context["changed_lines"],
             }
             report_payload["primary_failure_class"] = report_payload.get("primary_failure_class") or "none"
             report_payload["failure_event_codes"] = report_payload.get("failure_event_codes") or []
