@@ -101,13 +101,12 @@ Ownership boundary (2026-03-31):
 
 Sync note:
 - Runtime path: `$HOME/.openclaw/bin/run_task.py`
-- Mirror path: `project-meta/ops/openclaw/run_task.py`
-- Canonical source of truth is the mirror path.
-- Runtime path must be a symlink to the mirror path (no manual copies).
+- Canonical source of truth: `run_task.py` in this repo root.
+- Runtime path must be a symlink to this repo-local runner (no manual copies).
 - Install/update symlink:
-  - `bash project-meta/ops/openclaw/install_runtime_runner.sh`
+  - `bash install_runtime_runner.sh`
 - Verify sync:
-  - `bash project-meta/ops/openclaw/verify_runtime_runner.sh`
+  - `bash verify_runtime_runner.sh`
 - Runtime import bootstrap:
   - `run_task.py` and `task_planner.py` prepend shared repo roots from
     `${PROJECTS_ROOT:-$HOME/projects}` so `llm_client` resolves to its public

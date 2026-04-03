@@ -14,7 +14,7 @@ fi
 
 if [[ ! -L "${TARGET_RUNNER}" ]]; then
   echo "Runtime runner is not a symlink: ${TARGET_RUNNER}" >&2
-  echo "Run: bash project-meta/ops/openclaw/install_runtime_runner.sh" >&2
+  echo "Run: bash install_runtime_runner.sh" >&2
   exit 1
 fi
 
@@ -23,7 +23,7 @@ if [[ "${TARGET_REALPATH}" != "${SOURCE_RUNNER}" ]]; then
   echo "Runtime runner drift detected." >&2
   echo "  expected: ${SOURCE_RUNNER}" >&2
   echo "  actual:   ${TARGET_REALPATH}" >&2
-  echo "Run: bash project-meta/ops/openclaw/install_runtime_runner.sh" >&2
+  echo "Run: bash install_runtime_runner.sh" >&2
   exit 1
 fi
 
