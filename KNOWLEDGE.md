@@ -26,3 +26,18 @@ which breaks `from llm_client import acall_llm`. The current local-first fix is:
 
 This gets `moltbot` past the runner/bootstrap seam and back to the governed
 proof-task behavior instead of failing at import time.
+
+### 2026-04-03 — codex — bug-pattern
+
+The Claude agent runtime can leave a false-negative `LLMError` after a bounded
+task has already completed successfully.
+
+Measured pattern:
+- proof worktree landed a real commit
+- post-task validation passed
+- the Claude SDK path still surfaced
+  `Command failed with exit code 1 ... Check stderr output for details`
+
+`run_task.py` now treats only that narrow generic post-success error family as
+recoverable, and only when commit detection plus post-validation support
+success. Keep the rule narrow; do not widen it to arbitrary runtime exceptions.

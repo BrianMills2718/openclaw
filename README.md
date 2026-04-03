@@ -28,6 +28,9 @@ Runtime behavior (current):
 - Every run emits one structured JSON report to `OPENCLAW_REPORTS_DIR` (default: `$HOME/.openclaw/tasks/reports`).
 - Reports include `primary_failure_class` and `failure_event_codes`.
 - Reports include `decision_provenance` (schema `v1`) for dispatch/preflight/execution/routing/error decisions.
+- When a bounded agent run clearly commits real work and passes post-validation,
+  `run_task.py` now records bounded post-success recovery instead of treating a
+  generic Claude subprocess exit as an automatic hard failure.
 - Task prompts point agents back to repo-local governance (`CLAUDE.md`,
   generated `AGENTS.md`, and `scripts/relationships.yaml` when present) rather
   than introducing an OpenClaw-only policy file.

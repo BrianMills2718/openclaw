@@ -546,6 +546,46 @@ def _agent_committed(task: TaskSpec) -> bool:
         return False
 
 
+def _recoverable_postsuccess_agent_error_reason(
+    error_type: str,
+    error_text: str,
+) -> str | None:
+    """Return a recovery reason for bounded post-success agent failures.
+
+    This is intentionally narrow. We only recover from the measured Claude
+    agent false-negative family where the subprocess exits generically after the
+    agent has already completed bounded work.
+    """
+
+    normalized = error_text.strip()
+    if not normalized:
+        return "empty agent error after bounded work"
+
+    if (
+        error_type == "LLMError"
+        and "Command failed with exit code 1" in normalized
+        and "Check stderr output for details" in normalized
+    ):
+        return "generic claude agent subprocess exit after bounded work"
+
+    return None
+
+
+def _postsuccess_recovery_reason(
+    task: TaskSpec,
+    error_type: str,
+    error_text: str,
+) -> str | None:
+    """Return the bounded recovery reason when commit evidence supports it."""
+
+    reason = _recoverable_postsuccess_agent_error_reason(error_type, error_text)
+    if reason is None:
+        return None
+    if not _agent_committed(task):
+        return None
+    return reason
+
+
 # ---------------------------------------------------------------------------
 # File management
 # ---------------------------------------------------------------------------
@@ -1567,19 +1607,26 @@ async def _run_flat_task(task_path: Path, *, parent_trace_id: str | None = None)
         err_msg = str(e).strip()
         log.error("Task execution failed: %s: %s\n%s", type(e).__name__, e, tb)
 
-        # Codex SDK sometimes sends turn.failed with empty message even when
-        # the agent completed its work. Check if git shows a new commit.
-        if not err_msg and _agent_committed(task):
-            log.warning("Empty error but agent committed changes — treating as success")
+        recovery_reason = _postsuccess_recovery_reason(task, type(e).__name__, err_msg)
+        if recovery_reason is not None:
+            log.warning(
+                "Recoverable post-success agent error: %s", recovery_reason
+            )
             _record_decision_event(
                 report_payload,
                 decision_stage="error_handling",
-                selected_action="treat_empty_error_as_recoverable",
-                decision_reason="empty SDK error with detected commit; running validation before routing",
+                selected_action="treat_postsuccess_agent_error_as_recoverable",
+                decision_reason=(
+                    f"{recovery_reason}; detected recent commit, "
+                    "running validation before routing"
+                ),
             )
             if active_path is None:
                 active_path = _move_task(task_path, "active")
-            _append_status_log(active_path, "Agent error was empty but commit detected — treating as success")
+            _append_status_log(
+                active_path,
+                f"Recovered post-success agent error: {type(e).__name__}: {e}",
+            )
             validation_passed, validation_details = _run_validation(task, pre_status)
             _append_status_log(active_path, f"Validation: {'PASS' if validation_passed else 'FAIL'} — {validation_details}")
             destination = "completed" if validation_passed else "failed"
@@ -1598,6 +1645,8 @@ async def _run_flat_task(task_path: Path, *, parent_trace_id: str | None = None)
                 "passed": validation_passed,
                 "details": validation_details,
             }
+            report_payload["recovered_exception"] = f"{type(e).__name__}: {e}"
+            report_payload["recovery_reason"] = recovery_reason
             report_payload["primary_failure_class"] = report_payload.get("primary_failure_class") or "none"
             report_payload["failure_event_codes"] = report_payload.get("failure_event_codes") or []
             report_payload["finished_at"] = datetime.now(timezone.utc).isoformat()
