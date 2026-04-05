@@ -1,6 +1,6 @@
 # Round 1 Implementation
 
-This branch already contained the requested `run_task.py` lineage output before this round started. The delivery-readiness audit now prints `Planner task ID` and `Generated at` for planner-produced work, sourcing those fields from explicit `planner_lineage` metadata and using the flat-task `created` timestamp as a fallback when planner metadata is absent but the task ID is planner-shaped.
+This round verified the existing `run_task.py` lineage output and tightened the audit regression coverage around the exact CLI path operators use. `--audit-delivery-readiness` continues to print `Planner task ID` and `Generated at` for planner-produced work, sourcing those fields from explicit `planner_lineage` metadata and using the flat-task `created` timestamp as a fallback when planner metadata is absent but the task ID is planner-shaped. The new test exercises that behavior for a loaded graph task through `main()`, not just the formatter helper.
 
 ## Changed Files
 
@@ -11,8 +11,6 @@ This branch already contained the requested `run_task.py` lineage output before 
 ## Tests Run
 
 - `pytest -q tests/test_run_task_delivery_audit.py`
-- `pytest -q tests/test_run_task_reports.py`
-- `pytest -q tests/test_task_planner_delivery_modes.py`
 
 ## Residual Risks
 
@@ -21,5 +19,4 @@ This branch already contained the requested `run_task.py` lineage output before 
 
 ## Commit SHA
 
-- `ae30ae6dc426de646ac8f0f2eda23c7c87a60f41` — initial feature commit for planner lineage audit output
-- `0f8dcf4a19db41b15d1a4c438f2133c6edde35d4` — timestamp normalization follow-up
+- `7e9c619b0724d5f2c4610466b2fc2716ca437c9c` — verified code/test commit for this round
