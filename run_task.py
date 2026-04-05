@@ -681,6 +681,134 @@ def _log_cost(task_id: str, agent: str, model: str,
     log.info("Cost: $%.4f in %.1fs", cost_usd, duration_s)
 
 
+def _load_graph_yaml_raw(path: Path) -> dict[str, Any]:
+    """Load a YAML task graph file as a raw dict, returning {} on any failure.
+
+    Used to extract planner_metadata without going through the full typed loader.
+    Failures are silent because this is a best-effort gate check.
+    """
+    try:
+        import yaml
+        with open(path) as f:
+            return yaml.safe_load(f) or {}
+    except Exception:
+        return {}
+
+
+def _check_review_gate(
+    planner_metadata: dict[str, Any],
+) -> dict[str, Any]:
+    """Read the final review JSON for a planner-generated review_cycle graph.
+
+    Returns a dict with:
+    - passed: bool — True only when the review JSON exists, is valid, and status=='pass'
+    - status: str — 'pass', 'needs_changes', 'missing', 'invalid', or 'error'
+    - reason: str — human-readable explanation
+    - review_json_path: str — the expected path
+    - raw: dict | None — parsed review JSON when available
+    """
+    review_json_path = planner_metadata.get("final_review_json", "")
+    result: dict[str, Any] = {
+        "passed": False,
+        "status": "missing",
+        "reason": "",
+        "review_json_path": review_json_path,
+        "raw": None,
+    }
+
+    if not review_json_path:
+        result["reason"] = "planner_metadata.final_review_json not set"
+        return result
+
+    path = Path(review_json_path)
+    if not path.exists():
+        result["reason"] = f"Review JSON not found: {review_json_path}"
+        return result
+
+    try:
+        with open(path) as f:
+            review = json.load(f)
+        result["raw"] = review
+    except json.JSONDecodeError as e:
+        result["status"] = "invalid"
+        result["reason"] = f"Review JSON is not valid JSON: {e}"
+        return result
+    except Exception as e:
+        result["status"] = "error"
+        result["reason"] = f"Failed to read review JSON: {e}"
+        return result
+
+    review_status = review.get("status", "")
+    result["status"] = review_status or "invalid"
+    if review_status == "pass":
+        result["passed"] = True
+        result["reason"] = "review gate passed"
+    elif review_status == "needs_changes":
+        result["reason"] = f"review requires changes: {review.get('next_objective', '')}"
+    else:
+        result["reason"] = f"unexpected review status: '{review_status}'"
+
+    return result
+
+
+def _check_commit_evidence(
+    planner_metadata: dict[str, Any],
+    task_started_at: str,
+) -> dict[str, Any]:
+    """Check whether a new commit exists in the target repo since the task started.
+
+    Returns a dict with:
+    - passed: bool — True when at least one new commit exists since task_started_at
+    - commit_detected: bool
+    - commit_sha: str | None
+    - commit_timestamp: str | None
+    - reason: str
+    """
+    import subprocess
+
+    result: dict[str, Any] = {
+        "passed": False,
+        "commit_detected": False,
+        "commit_sha": None,
+        "commit_timestamp": None,
+        "reason": "",
+    }
+
+    target_repo = planner_metadata.get("target_repo", "")
+    if not target_repo:
+        result["reason"] = "planner_metadata.target_repo not set"
+        return result
+
+    repo_path = Path(target_repo)
+    if not repo_path.is_dir():
+        result["reason"] = f"Target repo not found: {target_repo}"
+        return result
+
+    try:
+        # Parse ISO start time to git-friendly format
+        started_dt = datetime.fromisoformat(task_started_at)
+        since_arg = started_dt.strftime("%Y-%m-%dT%H:%M:%S")
+        cmd = ["git", "log", "--oneline", f"--since={since_arg}", "-1",
+               "--format=%H %aI"]
+        proc = subprocess.run(
+            cmd, cwd=repo_path, capture_output=True, text=True, timeout=10,
+        )
+        output = proc.stdout.strip()
+        if output:
+            parts = output.split(" ", 1)
+            result["commit_detected"] = True
+            result["commit_sha"] = parts[0]
+            result["commit_timestamp"] = parts[1] if len(parts) > 1 else None
+            result["passed"] = True
+            result["reason"] = f"commit detected: {parts[0][:8]}"
+        else:
+            result["reason"] = f"no new commit in {target_repo} since {since_arg}"
+    except Exception as e:
+        result["reason"] = f"commit check failed: {e}"
+
+    return result
+
+
 def _safe_report_slug(value: str) -> str:
     slug = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in value)
     slug = slug.strip("_")
@@ -1326,17 +1454,68 @@ async def _run_graph_task(task_path: Path) -> bool:
             for p in analysis.proposals:
                 log.info("  [%s] %s: %s for %s", p.risk, p.category, p.action, p.task_id)
 
-        # Archive
-        destination = "completed" if report.status == "completed" else "failed"
+        # Load planner metadata if present (Plan #2 semantic gating)
+        graph_dict = _load_graph_yaml_raw(active_path)
+        planner_metadata: dict[str, Any] = graph_dict.get("planner_metadata", {})
+        is_planner_review_cycle = (
+            planner_metadata.get("delivery_mode") == "review_cycle"
+        )
+
+        # Baseline routing from graph execution status
+        if report.status != "completed":
+            destination = "failed"
+            review_gate: dict[str, Any] = {}
+            commit_evidence: dict[str, Any] = {}
+            semantic_gate_reason = "graph execution did not complete"
+        elif is_planner_review_cycle:
+            # Phase 2: Semantic review gate — graph completion alone is not enough
+            review_gate = _check_review_gate(planner_metadata)
+            if not review_gate["passed"]:
+                destination = "failed"
+                semantic_gate_reason = f"review gate failed: {review_gate['reason']}"
+                commit_evidence = {}
+                log.warning("Review gate failed for %s: %s", graph.meta.id, review_gate["reason"])
+            else:
+                # Phase 3: Commit evidence check
+                commit_evidence = _check_commit_evidence(
+                    planner_metadata,
+                    task_started_at=report_payload["started_at"],
+                )
+                if not commit_evidence["passed"]:
+                    destination = "failed"
+                    semantic_gate_reason = (
+                        f"review passed but no commit: {commit_evidence['reason']}"
+                    )
+                    log.warning(
+                        "Commit gate failed for %s: %s", graph.meta.id, commit_evidence["reason"]
+                    )
+                else:
+                    destination = "completed"
+                    semantic_gate_reason = "review gate passed; commit detected"
+        else:
+            # Non-planner graph or flat delivery — existing behavior
+            destination = "completed"
+            review_gate = {}
+            commit_evidence = {}
+            semantic_gate_reason = "graph completed (no planner review gate)"
+
         _move_task(active_path, destination)
-        report_payload["status"] = report.status
+        report_payload["status"] = destination  # reflects semantic result, not just exec status
         report_payload["destination"] = destination
+        report_payload["planner_lineage"] = planner_metadata if planner_metadata else {}
+        report_payload["review_gate"] = review_gate
+        report_payload["commit_evidence"] = commit_evidence
+
         _record_decision_event(
             report_payload,
             decision_stage="routing",
             selected_action=f"route_to_{destination}",
-            decision_reason=f"graph execution status={report.status}",
-            evidence_refs=[] if report.status == "completed" else ["OPENCLAW_GRAPH_RUN_FAILED"],
+            decision_reason=semantic_gate_reason,
+            evidence_refs=(
+                []
+                if destination == "completed"
+                else ["OPENCLAW_GRAPH_SEMANTIC_GATE_FAILED"]
+            ),
         )
         report_payload["run"] = {
             "total_cost_usd": report.total_cost_usd,
@@ -1345,17 +1524,22 @@ async def _run_graph_task(task_path: Path) -> bool:
             "waves_total": report.waves_total,
             "task_results_count": len(report.task_results),
         }
-        report_payload["primary_failure_class"] = "none" if report.status == "completed" else "reasoning"
-        report_payload["failure_event_codes"] = [] if report.status == "completed" else ["OPENCLAW_GRAPH_RUN_FAILED"]
+        report_payload["primary_failure_class"] = "none" if destination == "completed" else "reasoning"
+        report_payload["failure_event_codes"] = (
+            [] if destination == "completed" else ["OPENCLAW_GRAPH_SEMANTIC_GATE_FAILED"]
+        )
         report_payload["finished_at"] = datetime.now(timezone.utc).isoformat()
         _write_task_report(graph_ref, report_payload)
 
-        log.info("=== Graph %s: %s (cost=$%.4f, duration=%.1fs, %d/%d waves) ===",
-                 report.status.upper(), graph.meta.id,
-                 report.total_cost_usd, report.total_duration_s,
-                 report.waves_completed, report.waves_total)
+        log.info(
+            "=== Graph %s: %s (cost=$%.4f, duration=%.1fs, %d/%d waves) — %s ===",
+            destination.upper(), graph.meta.id,
+            report.total_cost_usd, report.total_duration_s,
+            report.waves_completed, report.waves_total,
+            semantic_gate_reason,
+        )
 
-        return report.status == "completed"
+        return destination == "completed"
 
     except Exception as e:
         import traceback

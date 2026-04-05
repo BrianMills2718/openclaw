@@ -3,7 +3,7 @@
 doc_role: ops
 mutable_facts_allowed: yes
 
-**Status**: 🚧 IN PROGRESS
+**Status**: ✅ COMPLETE
 **Started**: 2026-04-04 (evening)
 
 **Operator instruction**: NEVER STOP. Execute all phases. Commit every verified slice.
@@ -40,32 +40,32 @@ planner → queue → review-cycle graph → semantic review gate → commit evi
 ## Phase Stack
 
 ### Phase 0 — Lock delivery contract
-**Status**: 🔲 PENDING
-**Pass when**: `TaskItem` has `task_kind`, `delivery_mode`, `file_scope`, `review_rounds`; validation rejects bad combos; unit tests pass
+**Status**: ✅ COMPLETE
+`TaskItem` extended with `task_kind`, `delivery_mode`, `file_scope`, `review_rounds`; `validate_task_delivery_contract()` rejects 5 invalid combos; 8 unit tests pass
 
 ### Phase 1 — Queue writer (both paths)
-**Status**: 🔲 PENDING
-**Pass when**: `write_flat_task()` + `write_review_cycle_task()` both work; graph YAML has deterministic id from planner task id
+**Status**: ✅ COMPLETE
+`write_flat_task()` + `write_review_cycle_task()` + `write_task_file()` router; graph YAML has deterministic id + planner_metadata; 9 unit tests pass
 
 ### Phase 2 — Review gate in run_task.py
-**Status**: 🔲 PENDING
-**Pass when**: Post-graph semantic gate reads review JSON, fails graph if `status != "pass"` or JSON missing/invalid
+**Status**: ✅ COMPLETE
+`_check_review_gate()` reads final review JSON, fails on missing/invalid/needs_changes; wired into `_run_graph_task()` after graph execution; 6 unit tests pass
 
 ### Phase 3 — Commit evidence
-**Status**: 🔲 PENDING
-**Pass when**: Post-graph commit detection inspects repo; routes to failed if commit absent for planner review_cycle tasks
+**Status**: ✅ COMPLETE
+`_check_commit_evidence()` inspects target repo for new commits since task start; routes to failed if absent; 4 unit tests pass
 
 ### Phase 4 — Report schema tightening
-**Status**: 🔲 PENDING
-**Pass when**: Graph reports carry `delivery_mode`, `review_gate_outcome`, `commit_detected`, `planner_lineage`; backward compatible
+**Status**: ✅ COMPLETE
+Graph reports carry `planner_lineage`, `review_gate`, `commit_evidence`; flat reports remain backward-compatible; 5 unit tests pass
 
 ### Phase 5 — Dry-run proof
-**Status**: 🔲 PENDING
-**Pass when**: `task_planner.py --dry-run` on a code task produces review_cycle delivery_mode; `build_graph()` produces valid graph YAML that loads
+**Status**: ✅ COMPLETE
+Dry-run smoke test: planner emits `delivery_mode=review_cycle`, graph YAML loads with 5 tasks (context_init/implement_r1/review_r1/context_update_r1/synthesize), planner_metadata correct
 
 ### Phase 6 — Queue hygiene audit command
-**Status**: 🔲 PENDING
-**Pass when**: `python task_planner.py --audit-queue` classifies pending tasks by delivery-mode readiness
+**Status**: ✅ COMPLETE
+`python task_planner.py --audit-queue` classifies pending tasks into 4 categories: review_cycle_ready, flat_legacy, stale, broken
 
 ---
 
@@ -74,6 +74,12 @@ planner → queue → review-cycle graph → semantic review gate → commit evi
 | Time | Phase | What |
 |------|-------|------|
 | 2026-04-04 | setup | Sprint tracker created; worktree created |
+| 2026-04-04 | 0+1 | TaskItem extended; validate_task_delivery_contract(); write_flat_task/write_review_cycle_task/write_task_file router; prompt updated |
+| 2026-04-04 | 2+3 | _check_review_gate(); _check_commit_evidence(); _load_graph_yaml_raw(); wired into _run_graph_task() |
+| 2026-04-04 | 4 | planner_lineage/review_gate/commit_evidence in graph reports; backward-compat flat reports |
+| 2026-04-04 | 5 | Dry-run smoke test PASS — 5-task graph YAML with correct planner_metadata |
+| 2026-04-04 | 6 | audit_queue() + --audit-queue CLI flag |
+| 2026-04-04 | done | 38/38 tests pass; README updated; sync_plan_status fix committed |
 
 ---
 

@@ -339,6 +339,52 @@ def run_hygiene_sweep(target_projects: list[Path] | None = None) -> str:
     return f"{len(lines)}/{result.projects_scanned} projects have issues{scope}:\n" + "\n".join(lines)
 
 
+VALID_TASK_KINDS = {"code_change", "docs_only", "analysis_only", "queue_maintenance"}
+VALID_DELIVERY_MODES = {"flat", "review_cycle"}
+
+
+def validate_task_delivery_contract(task: dict[str, Any]) -> list[str]:
+    """Validate the delivery contract fields of a planner-generated task.
+
+    Returns a list of error strings; empty list means valid.
+    Enforced invariants (Plan #2 Phase 0):
+    - task_kind must be one of VALID_TASK_KINDS
+    - delivery_mode must be one of VALID_DELIVERY_MODES
+    - delivery_mode=review_cycle requires task_kind=code_change
+    - delivery_mode=review_cycle requires review_rounds to be a positive int
+    - delivery_mode=flat must NOT have review_rounds set
+    """
+    errors: list[str] = []
+
+    task_kind = task.get("task_kind", "")
+    delivery_mode = task.get("delivery_mode", "")
+    review_rounds = task.get("review_rounds")
+
+    if task_kind not in VALID_TASK_KINDS:
+        errors.append(
+            f"task_kind='{task_kind}' invalid; must be one of {sorted(VALID_TASK_KINDS)}"
+        )
+    if delivery_mode not in VALID_DELIVERY_MODES:
+        errors.append(
+            f"delivery_mode='{delivery_mode}' invalid; must be one of {sorted(VALID_DELIVERY_MODES)}"
+        )
+    if delivery_mode == "review_cycle" and task_kind != "code_change":
+        errors.append(
+            f"delivery_mode='review_cycle' requires task_kind='code_change', got '{task_kind}'"
+        )
+    if delivery_mode == "review_cycle":
+        if review_rounds is None or (isinstance(review_rounds, int) and review_rounds < 1):
+            errors.append(
+                "delivery_mode='review_cycle' requires review_rounds to be a positive integer"
+            )
+    if delivery_mode == "flat" and review_rounds is not None:
+        errors.append(
+            f"delivery_mode='flat' must not have review_rounds set (got {review_rounds})"
+        )
+
+    return errors
+
+
 def generate_tasks(max_tasks: int = 8) -> list[dict[str, Any]]:
     """Generate prioritized tasks by sending context to the LLM planner.
 
@@ -392,6 +438,38 @@ def generate_tasks(max_tasks: int = 8) -> list[dict[str, Any]]:
         title: str = Field(description="Concise task title")
         objective: str = Field(description="2-3 sentences on what to do")
         acceptance_criteria: list[str] = Field(description="List of testable criteria")
+        # Delivery contract (Plan #2)
+        task_kind: str = Field(
+            description=(
+                "Classify the work type: "
+                "'code_change' for any change to production code, schemas, validators, CLI, or tests; "
+                "'docs_only' for documentation, README, CLAUDE.md, or comment-only changes; "
+                "'analysis_only' for investigations, research, or triage with no required repo changes; "
+                "'queue_maintenance' for queue cleanup, stale-task repair, or runtime bookkeeping."
+            )
+        )
+        delivery_mode: str = Field(
+            description=(
+                "How to deliver this task: "
+                "'review_cycle' for code_change work (routes through implementation + review gate + commit); "
+                "'flat' for docs_only, analysis_only, or queue_maintenance work."
+            )
+        )
+        file_scope: list[str] = Field(
+            default_factory=list,
+            description=(
+                "Optional list of repo-relative paths or globs scoping the change. "
+                "Required for code_change tasks when scope is known. Empty list means unconstrained."
+            ),
+        )
+        review_rounds: int | None = Field(
+            default=None,
+            description=(
+                "Number of implementation-review rounds. "
+                "Required when delivery_mode='review_cycle' (use 1 for first rollout slice). "
+                "Must be null when delivery_mode='flat'."
+            ),
+        )
 
     class TaskPlan(BaseModel):
         """The full plan output from the LLM."""
@@ -421,21 +499,37 @@ def generate_tasks(max_tasks: int = 8) -> list[dict[str, Any]]:
     )
 
     logger.info("Generated %d tasks (cost: $%.4f)", len(plan.tasks), meta.cost)
-    return [t.model_dump() for t in plan.tasks]
+    tasks = [t.model_dump() for t in plan.tasks]
+    for task in tasks:
+        errors = validate_task_delivery_contract(task)
+        if errors:
+            raise ValueError(
+                f"Task '{task['id']}' has invalid delivery contract: {'; '.join(errors)}"
+            )
+    return tasks
 
 
-def write_task_file(task: dict[str, Any]) -> Path:
-    """Write a task dict as a flat task .md file in pending/.
+def _make_planner_task_id(task: dict[str, Any]) -> str:
+    """Build a deterministic planner task id from the task slug and today's date.
 
-    Uses the same format that run_task.py expects: YAML frontmatter
-    with id, priority, agent, project, constraints, then markdown body.
+    The id is stable across re-runs on the same calendar day, enabling
+    deduplication in the queue without needing a UUID.
+    """
+    return f"planner-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}-{task['id']}"
+
+
+def write_flat_task(task: dict[str, Any]) -> Path:
+    """Write a flat .md task to pending/.
+
+    For docs_only, analysis_only, and queue_maintenance work.
+    Preserves the original flat-task format that run_task.py expects.
     """
     PENDING_DIR.mkdir(parents=True, exist_ok=True)
 
-    task_id = f"planner-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}-{task['id']}"
+    task_id = _make_planner_task_id(task)
     safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", task_id)
 
-    frontmatter = {
+    frontmatter: dict[str, Any] = {
         "id": task_id,
         "priority": task["priority"],
         "agent": task["agent"],
@@ -446,6 +540,11 @@ def write_task_file(task: dict[str, Any]) -> Path:
         "constraints": {
             "max_turns": task["max_turns"],
             "max_budget_usd": task["max_budget_usd"],
+        },
+        # Delivery contract fields for observability
+        "planner_lineage": {
+            "task_kind": task.get("task_kind", ""),
+            "delivery_mode": "flat",
         },
     }
 
@@ -473,6 +572,150 @@ Advances: {task['goal_advanced']}
     return dest
 
 
+def write_review_cycle_task(task: dict[str, Any]) -> Path:
+    """Write a review-cycle graph YAML to pending/.
+
+    For code_change work. Calls launch_review_cycle.build_graph() as a library
+    function and writes the resulting graph YAML with a deterministic id derived
+    from the planner task id. The graph YAML carries planner_metadata so
+    run_task.py can find the final review artifact and perform semantic gating.
+    """
+    PENDING_DIR.mkdir(parents=True, exist_ok=True)
+
+    task_id = _make_planner_task_id(task)
+    cycle_id = re.sub(r"[^a-zA-Z0-9_-]", "_", task_id)
+
+    # Import build_graph as a library function
+    repo_root = Path(__file__).resolve().parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from launch_review_cycle import build_graph, _load_config  # type: ignore[import]
+
+    config = _load_config(None)
+    review_rounds = task.get("review_rounds") or 1
+    project_path = Path(task["project"]).expanduser().resolve()
+
+    graph = build_graph(
+        cycle_id=cycle_id,
+        project_path=project_path,
+        objective=task["objective"],
+        rounds=review_rounds,
+        config=config,
+    )
+
+    # Inject planner metadata so run_task.py can gate on review result
+    ws_dir = Path(str(config["workspace_dir"]).replace("~", str(Path.home()))).resolve()
+    final_review_json = str(ws_dir / cycle_id / f"round_{review_rounds}" / "review.json")
+    graph["planner_metadata"] = {
+        "planner_task_id": task_id,
+        "task_kind": task.get("task_kind", "code_change"),
+        "delivery_mode": "review_cycle",
+        "review_rounds": review_rounds,
+        "file_scope": task.get("file_scope", []),
+        "final_review_json": final_review_json,
+        "target_repo": str(project_path),
+        "created": datetime.now(timezone.utc).isoformat(),
+    }
+
+    try:
+        import yaml
+        graph_yaml = yaml.dump(graph, default_flow_style=False, sort_keys=False)
+    except ImportError:
+        graph_yaml = json.dumps(graph, indent=2)
+
+    dest = PENDING_DIR / f"{cycle_id}.yaml"
+    dest.write_text(graph_yaml)
+    return dest
+
+
+def write_task_file(task: dict[str, Any]) -> Path:
+    """Write a task dict to pending/, routing to the correct path based on delivery_mode.
+
+    Routes code_change tasks to write_review_cycle_task() and all other
+    work to write_flat_task(). Falls back to flat if delivery_mode is missing
+    (backward compatibility with pre-Plan-#2 task dicts).
+    """
+    delivery_mode = task.get("delivery_mode", "flat")
+    if delivery_mode == "review_cycle":
+        return write_review_cycle_task(task)
+    return write_flat_task(task)
+
+
+def audit_queue() -> None:
+    """Classify pending queue tasks by delivery-mode readiness.
+
+    Reads all pending tasks and categorizes them:
+    - review_cycle_ready: has planner_metadata.delivery_mode=review_cycle
+    - flat_legacy: has planner_lineage.delivery_mode=flat OR is a pre-Plan-#2 flat .md
+    - stale: YAML frontmatter created > 48h ago
+    - broken: cannot parse frontmatter
+
+    Does NOT rewrite any tasks. For operator review only.
+    """
+    import time
+
+    now = time.time()
+    categories: dict[str, list[str]] = {
+        "review_cycle_ready": [],
+        "flat_legacy": [],
+        "stale": [],
+        "broken": [],
+    }
+
+    for task_file in sorted(PENDING_DIR.glob("*")):
+        if task_file.suffix not in {".md", ".yaml", ".yml"}:
+            continue
+        try:
+            content = task_file.read_text()
+            # Try YAML frontmatter (--- ... --- for .md, or top-level dict for .yaml)
+            try:
+                import yaml
+                if task_file.suffix == ".md":
+                    fm_match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
+                    if fm_match:
+                        fm = yaml.safe_load(fm_match.group(1))
+                    else:
+                        fm = {}
+                else:
+                    fm = yaml.safe_load(content) or {}
+            except Exception:
+                categories["broken"].append(task_file.name)
+                continue
+
+            # Check staleness
+            created_str = fm.get("created") or (fm.get("graph", {}) or {}).get("created", "")
+            planner_meta = fm.get("planner_metadata") or {}
+            if not created_str:
+                created_str = planner_meta.get("created", "")
+            if created_str:
+                try:
+                    from datetime import datetime, timezone
+                    created_dt = datetime.fromisoformat(created_str)
+                    age_h = (now - created_dt.timestamp()) / 3600
+                    if age_h > 48:
+                        categories["stale"].append(f"{task_file.name} (age={age_h:.0f}h)")
+                        continue
+                except Exception:
+                    pass
+
+            # Classify
+            if planner_meta.get("delivery_mode") == "review_cycle":
+                categories["review_cycle_ready"].append(task_file.name)
+            else:
+                categories["flat_legacy"].append(task_file.name)
+
+        except Exception as e:
+            categories["broken"].append(f"{task_file.name} ({e})")
+
+    print("=== Pending Queue Audit ===")
+    for cat, items in categories.items():
+        print(f"\n{cat} ({len(items)}):")
+        for item in items:
+            print(f"  {item}")
+    total = sum(len(v) for v in categories.values())
+    print(f"\nTotal: {total}")
+
+
 def main() -> None:
     """CLI entry point."""
     global PLANNER_MODEL
@@ -490,7 +733,16 @@ def main() -> None:
         "--mission-objective",
         help="Optional mission objective to inject into the planning prompt.",
     )
+    parser.add_argument(
+        "--audit-queue",
+        action="store_true",
+        help="Audit pending queue and classify tasks by delivery-mode readiness (read-only).",
+    )
     args = parser.parse_args()
+
+    if args.audit_queue:
+        audit_queue()
+        return
 
     PLANNER_MODEL = args.model
     if args.target_projects:

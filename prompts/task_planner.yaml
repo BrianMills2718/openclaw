@@ -84,3 +84,18 @@ messages:
       - title: concise task title
       - objective: 2-3 sentences on what to do
       - acceptance_criteria: list of testable criteria
+      - task_kind: classify the work — one of:
+          "code_change" (changes production code, schemas, tests, CLI, or validators),
+          "docs_only" (doc/README/CLAUDE.md/comment changes only),
+          "analysis_only" (investigation, research, triage — no required repo changes),
+          "queue_maintenance" (queue cleanup, stale-task repair, bookkeeping)
+      - delivery_mode: one of:
+          "review_cycle" — REQUIRED for all code_change tasks (routes through implementation+review gate+commit),
+          "flat" — for docs_only, analysis_only, queue_maintenance
+      - file_scope: list of repo-relative paths or globs scoping the change (empty list if unconstrained)
+      - review_rounds: integer (use 1 for all code_change tasks); null for flat tasks
+
+      IMPORTANT delivery contract rules:
+      - task_kind="code_change" MUST use delivery_mode="review_cycle" and review_rounds=1
+      - task_kind!="code_change" MUST use delivery_mode="flat" and review_rounds=null
+      - Do not use review_cycle for docs-only or analysis tasks

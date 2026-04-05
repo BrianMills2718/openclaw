@@ -7,7 +7,7 @@ Track all implementation work here.
 | # | Name | Priority | Status | Blocks |
 |---|------|----------|--------|--------|
 | 1 | [Example Plan](01_example.md) | Medium | Planned | - |
-| 2 | [End-to-End Planner -> Review -> Commit Flow](02_end_to_end_planner_review_commit_flow.md) | High | 📋 Planned | - |
+| 2 | [End-to-End Planner -> Review -> Commit Flow](02_end_to_end_planner_review_commit_flow.md) | High | ✅ Complete | - |
 
 ## Status Key
 
