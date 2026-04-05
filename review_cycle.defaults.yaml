@@ -3,7 +3,7 @@
 
 # Home-relative runtime defaults (portable across users/hosts).
 queue_dir: ~/.openclaw/tasks/pending
-workspace_dir: ~/.openclaw/workspace/review-cycles
+workspace_dir: .openclaw/review-cycles
 
 cycle:
   rounds: 3
@@ -12,35 +12,33 @@ cycle:
   max_rounds: 8
 
 context_pack:
-  enabled: true
+  enabled: false
   filename: context_pack.md
 
 agents:
   implement:
-    agent: claude-code
+    agent: codex
     # Optional explicit model override. Leave null to use difficulty routing.
     model: null
     difficulty: 3
     mcp_servers: []
   review:
-    # Must be an agent model (codex/claude-code) — the review task writes a JSON
-    # file that downstream tasks depend on. Text-only models (gpt-5.2-pro, gemini)
-    # cannot write files and will fail the file_exists + json_schema validators.
-    agent: claude-code
-    model: claude-code
-    difficulty: 4
+    # Direct review proved non-truthful for local repo work because it cannot
+    # read implementation artifacts or emit file-based review outputs without a
+    # shim. Use a workspace agent by default so review can inspect local files,
+    # write review.json directly, and participate in the commit-gated path.
+    agent: codex
+    model: null
+    difficulty: 5
     mcp_servers: []
   context:
-    # Must be an agent model — context_init and context_update write .md files
-    # to ~/.openclaw/workspace/review-cycles/. Text models cannot satisfy
-    # file_exists validators.
-    agent: claude-code
-    model: claude-code
+    agent: codex
+    model: null
     difficulty: 2
     mcp_servers: []
   synthesis:
-    agent: claude-code
-    model: claude-code
+    agent: codex
+    model: null
     difficulty: 2
     mcp_servers: []
 

@@ -1,6 +1,6 @@
 # Plan #2: End-to-End Planner -> Review -> Commit Flow
 
-**Status:** ✅ Complete (2026-04-04)
+**Status:** In Progress
 **Type:** implementation
 **Priority:** High
 **Blocked By:** None
@@ -258,43 +258,20 @@ For `delivery_mode == review_cycle`:
 | Planner emits wrong delivery mode for a code task | Generated task contract says `flat` for `task_kind=code_change` | Reject at planner validation layer before writing queue artifacts |
 | Graph finishes but review did not really approve the work | Final review JSON exists but `status != pass` | Post-graph semantic gate in `run_task.py` routes to `failed` |
 | Review passes but no commit landed | Repo has no new commit after graph run | Post-graph commit gate routes to `failed` and records explicit evidence |
-| Legacy pending queue starves new review-cycle work | Supervisor keeps selecting stale historical tasks | Add audit command and use scoped pending proof tasks for rollout validation |
-| Report schema drift breaks historical consumers | New required fields invalidate existing report readers | Keep new fields additive and backward-compatible |
-| Planner-generated graph ids are unstable | Same planner task produces different graph ids on re-run | Derive graph ids deterministically from planner task id |
-| Graph path still depends on external shared internals in unexpected ways | Proof run fails inside `scripts.meta.task_graph` or `analyzer` seams | Keep the first slice local to `moltbot` runtime code and log any shared-infra blockers as explicit follow-on issues |
+| Planner-generated graph artifact is malformed or missing metadata | Queue writer emits graph without final review path or repo path | Graph build tests fail and queue writer rejects the artifact before enqueue |
+| Report schema drift breaks older report consumers | Existing report readers reject new additive fields | Keep schema additions additive and verify old minimal reports still validate |
 
 ---
 
 ## Uncertainty Register
 
-| ID | Uncertainty | Impact | Resolution Method | Must Resolve Before | Default for This Plan |
-|----|-------------|--------|-------------------|---------------------|-----------------------|
-| U1 | How reliably can the planner classify `task_kind` for real tasks? | Wrong delivery mode would bypass review or overuse graph cycles | Dry-run planner outputs on a frozen sample set and inspect classification accuracy before rollout | Phase 5 proof run | Start with explicit planner field plus strict writer-side validation |
-| U2 | Should one-round review cycles be enough, or should failed review automatically trigger round 2? | A one-round gate may fail more often but is simpler and clearer | Prove one-round gating first; measure failure pattern before adding auto-rework loops | Not required before first implementation slice | One round only; `needs_changes` routes to failed |
-| U3 | Can graph-level commit evidence be derived cleanly from current task timestamps and repo state? | False positives or false negatives would make completion untrustworthy | Implement commit detection against task start time and test with synthetic repos | Phase 3 | Use repo commit newer than graph start time as the only accepted signal |
-| U4 | Does the current graph path expose enough metadata to find the final review JSON without brittle conventions? | If not, run_task cannot gate on review semantics reliably | Add explicit graph metadata / output references during graph generation | Phase 2 | Expose explicit final review artifact path in planner-generated graphs |
-| U5 | Should planner-generated docs-only tasks ever go through review_cycle? | Overusing the graph path adds cost and friction | Defer until the code-change path is proven and measure docs-task quality separately | Not required before first slice | Docs-only tasks stay flat |
-| U6 | How should legacy pending flat tasks be handled once the new path exists? | Old tasks may continue bypassing review and pollute supervisor behavior | Separate migration or queue-cleanup plan after the new path is proven | Not required before first slice | No bulk migration in this plan |
-| U7 | Should the initial planner-generated graphs reuse the full context-init/context-update/synthesis structure or a smaller graph? | Full graph is heavier; minimal graph is new code | Compare complexity during implementation review | Phase 1 | Reuse the full existing graph builder to minimize new execution semantics |
-| U8 | What should happen when review passes but the repo cannot create commits because of environment or permission issues? | Whole-system completion semantics become ambiguous | Treat as failed in the first rollout slice and record explicit blocker evidence | Phase 3 | No commit means no `completed` status for planner-generated review-cycle tasks |
-
----
-
-## Notes
-
-### Out of scope for this plan
-
-- Bulk migration of historical pending tasks
-- Replacing the review model or review-agent defaults
-- Extracting `task_graph` or `analyzer` out of their current shared-home dependency
-- Changing the supervisor scheduling policy beyond what is needed to prove the new delivery path
-
-### Proof target
-
-The first proof task for this plan must be a safe, bounded, planner-generated code change in a repo with:
-
-- a clean worktree
-- a known test entrypoint
-- low blast radius
-- no active human review dependency in the critical path
-
+| ID | Uncertainty | Current Default | Why It Is Safe Enough To Proceed |
+|----|-------------|-----------------|----------------------------------|
+| U1 | Planner may misclassify some bounded tasks as `docs_only` vs `code_change` | Default to `code_change` whenever the task requires test changes, schema changes, CLI changes, or code edits | This biases toward the safer gated path |
+| U2 | One review round may be insufficient for some repos | First rollout stays at one round and treats follow-up convergence as a separate optimization problem | The objective is truthful gating, not maximal autonomous convergence in this slice |
+| U3 | Graph-level commit detection may be tricky for repos with unrelated concurrent commits | Detect commits in the task target repo and require commit timestamp newer than the task start timestamp | This is precise enough for the first bounded proof task |
+| U4 | Final review artifact path may not be exposed cleanly from current graph metadata | Extend graph metadata explicitly rather than inferring it from filenames | Explicit metadata avoids fragile inference |
+| U5 | Some docs-only tasks may still benefit from review-cycle graphs | Keep docs-only on the flat path unless there is a demonstrated need for graph review later | This contains scope and keeps the gate attached to code delivery first |
+| U6 | Historical pending tasks may have ambiguous lineage fields | Leave legacy tasks untouched and apply the new contract only to newly planned tasks | This avoids queue migration risk during the proof slice |
+| U7 | `launch_review_cycle.py` may contain more machinery than needed for planner-generated graphs | Reuse the existing builder first and simplify later only if the tests show unnecessary coupling | Reuse is lower risk than introducing a second graph definition now |
+| U8 | The runtime may reach review pass but fail to create a commit due to repo policy or agent behavior | Treat that as a real failure, record it explicitly, and keep the graph out of `completed/` | The whole-system contract requires commit evidence |

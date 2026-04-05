@@ -109,8 +109,9 @@ def _impl_prompt(
         "Execution requirements:",
         "1. Implement the required changes in the repo.",
         "2. Run relevant tests for changed code paths.",
-        "3. Write a concise implementation note file at the required path.",
-        "4. Include: changed files, tests run, residual risks.",
+        "3. Commit verified work with a descriptive commit message before finishing.",
+        "4. Write a concise implementation note file at the required path.",
+        "5. Include: changed files, tests run, residual risks, commit sha.",
         "",
         f"Write implementation note to: {impl_note_path}",
     ])
@@ -242,10 +243,17 @@ def build_graph(
     objective: str,
     rounds: int,
     config: dict[str, Any],
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a YAML task graph for an implementation-review cycle."""
-    ws_dir = Path(str(config["workspace_dir"]).replace("~", str(Path.home()))).resolve()
+    ws_dir = Path(str(config["workspace_dir"]).replace("~", str(Path.home())))
+    if not ws_dir.is_absolute():
+        ws_dir = (project_path / ws_dir).resolve()
+    else:
+        ws_dir = ws_dir.resolve()
     cycle_dir = ws_dir / cycle_id
+    final_review_json = cycle_dir / f"round_{rounds}" / "review.json"
+    final_report = cycle_dir / "final_decision.md"
 
     graph: dict[str, Any] = {
         "graph": {
@@ -255,7 +263,15 @@ def build_graph(
             "checkpoint": config["cycle"]["checkpoint"],
         },
         "tasks": {},
+        "metadata": {
+            "target_repo_path": str(project_path),
+            "review_rounds": rounds,
+            "final_review_json": str(final_review_json),
+            "final_report": str(final_report),
+        },
     }
+    if metadata:
+        graph["metadata"].update(metadata)
 
     impl_cfg = config["agents"]["implement"]
     review_cfg = config["agents"]["review"]
@@ -409,7 +425,6 @@ def build_graph(
 
         last_review_task = review_task
 
-    final_report = cycle_dir / "final_decision.md"
     synth_task = "synthesize"
     synth_entry: dict[str, Any] = {
         "difficulty": int(synth_cfg["difficulty"]),

@@ -49,10 +49,20 @@ python task_planner.py --audit-queue
 - Flat tasks now require explicit `model:` declarations at execution time.
 - `--loop` now refuses to start when pending or active tasks still have model
   gaps, unless operators pass `--allow-legacy`.
-- Review-cycle defaults remain intentionally conservative in this plan: the
-  default review lane stays `agent: direct` with `model: gpt-5.2-pro` unless a
-  caller overrides it with an explicit config file.
+- Review-cycle defaults use workspace agents for local file work: the default
+  review lane is `agent: codex` with no explicit model override, so the graph
+  resolves it through agent-capable difficulty routing unless a caller
+  overrides it with an explicit config file.
 - Graph tasks run deterministic preflight checks before execution (`non-empty graph`, `waves`, `MCP server configs`).
+- Review-cycle Codex tasks default to explicit CLI transport during runtime
+  bootstrap. In `run_task.py`, `_bootstrap_runtime_env_defaults()` calls
+  `os.environ.setdefault("LLM_CLIENT_CODEX_TRANSPORT", "cli")` because the
+  current `auto` path can still spend most of a graph task in the SDK lane
+  before falling back and expose long review-cycle steps to the 300s task
+  timeout.
+- Because that bootstrap path uses `os.environ.setdefault(...)`, an
+  operator-set `LLM_CLIENT_CODEX_TRANSPORT` still overrides the default
+  instead of being overwritten.
 - Every run emits one structured JSON report to `OPENCLAW_REPORTS_DIR` (default: `$HOME/.openclaw/tasks/reports`).
 - Reports include `primary_failure_class` and `failure_event_codes`.
 - Reports include `decision_provenance` (schema `v1`) for dispatch/preflight/execution/routing/error decisions.
@@ -66,10 +76,21 @@ python task_planner.py --audit-queue
   than introducing an OpenClaw-only policy file.
 - Operators can audit and migrate legacy flat tasks before stricter supervisor
   gating lands:
-  - `python ops/openclaw/run_task.py --scan-model-gaps`
-  - `python ops/openclaw/run_task.py --repair-flat-models`
-  - `python ops/openclaw/run_task.py --repair-flat-models --repair-default-model <model> --apply-repairs`
-  - `python ops/openclaw/run_task.py --loop --allow-legacy`
+  - `python run_task.py --audit-delivery-readiness <task-file>`
+  - `python run_task.py --scan-model-gaps`
+  - `python run_task.py --repair-flat-models`
+  - `python run_task.py --repair-flat-models --repair-default-model <model> --apply-repairs`
+  - `python run_task.py --loop --allow-legacy`
+
+Delivery-readiness audit:
+- `python run_task.py --audit-delivery-readiness <task-file>` parses the task,
+  runs the same deterministic preflight and budget checks used at execution
+  time, and prints a readiness report without moving or executing the task.
+- When planner lineage metadata exists, the audit also prints `Planner task
+  ID` and `Planner generated at` so queued work can be traced back to the
+  originating planner artifact.
+- Exit status `0` means the task is ready to execute; exit status `1` means the
+  task is not ready and the printed audit explains why.
 
 Governance boundary:
 - OpenClaw is an orchestration layer, not the canonical home of per-repo rules.

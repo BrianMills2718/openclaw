@@ -1,108 +1,124 @@
-"""Tests for Plan #2 Phase 1: review-cycle graph writer contract.
-
-Verifies that write_review_cycle_task produces a valid graph YAML with:
-- deterministic id derived from planner task id
-- planner_metadata block with final_review_json path
-- review and synthesis tasks present for 1-round cycles
-"""
+"""Tests for review-cycle graph metadata and stage wiring."""
 
 from __future__ import annotations
 
-import sys
-import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
-import yaml
-
-_MOLTBOT_ROOT = Path(__file__).resolve().parent.parent
-if str(_MOLTBOT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_MOLTBOT_ROOT))
-
-from task_planner import write_review_cycle_task  # type: ignore[import]
+import launch_review_cycle
 
 
-def _make_code_task(**overrides: object) -> dict:
-    """Build a minimal valid code_change task dict."""
-    base = {
-        "id": "my-code-task",
-        "priority": "high",
-        "agent": "codex",
-        "model": "codex",
-        "project": str(Path.home() / "projects" / "moltbot"),
-        "goal_advanced": "test goal",
-        "max_budget_usd": 1.0,
-        "max_turns": 20,
-        "title": "Test code task",
-        "objective": "Add a small helper function.",
-        "acceptance_criteria": ["function exists", "tests pass"],
-        "task_kind": "code_change",
-        "delivery_mode": "review_cycle",
-        "file_scope": ["task_planner.py"],
-        "review_rounds": 1,
+def _config(tmp_path: Path) -> dict[str, object]:
+    """Build a minimal review-cycle config fixture."""
+
+    return {
+        "queue_dir": str(tmp_path / "pending"),
+        "workspace_dir": str(tmp_path / "workspace"),
+        "cycle": {"timeout_minutes": 120, "checkpoint": "none"},
+        "agents": {
+            "implement": {"agent": "codex", "model": None, "difficulty": 3, "mcp_servers": []},
+            "review": {
+                "agent": "codex",
+                "model": None,
+                "difficulty": 5,
+                "mcp_servers": [],
+            },
+            "context": {
+                "agent": "codex",
+                "model": "gemini/gemini-2.5-flash",
+                "difficulty": 2,
+                "mcp_servers": [],
+            },
+            "synthesis": {
+                "agent": "codex",
+                "model": "gemini/gemini-2.5-flash",
+                "difficulty": 2,
+                "mcp_servers": [],
+            },
+        },
+        "context_pack": {"enabled": True, "filename": "context_pack.md"},
+        "validation": {"require_json_review": True},
     }
-    base.update(overrides)
-    return base
 
 
-class TestWriteReviewCycleTask:
-    """write_review_cycle_task produces correct graph YAML artifacts."""
+def test_build_graph_includes_final_review_json_reference(tmp_path: Path) -> None:
+    """Graph metadata exposes the final review artifact required for gating."""
 
-    def test_write_review_cycle_task_emits_graph_yaml(self) -> None:
-        """A review-cycle task produces a .yaml file in pending/."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pending = Path(tmpdir) / "pending"
-            with patch("task_planner.PENDING_DIR", pending):
-                task = _make_code_task()
-                dest = write_review_cycle_task(task)
-                assert dest.exists(), f"Expected {dest} to exist"
-                assert dest.suffix == ".yaml", f"Expected .yaml, got {dest.suffix}"
+    graph = launch_review_cycle.build_graph(
+        cycle_id="planner-2026-04-04-demo-task",
+        project_path=tmp_path / "repo",
+        objective="Implement the bounded change.",
+        rounds=2,
+        config=_config(tmp_path),
+        metadata={"delivery_mode": "review_cycle"},
+    )
 
-    def test_graph_yaml_has_deterministic_id(self) -> None:
-        """Graph id must be derived from planner task id, not random."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pending = Path(tmpdir) / "pending"
-            with patch("task_planner.PENDING_DIR", pending):
-                task = _make_code_task(id="my-code-task")
-                dest = write_review_cycle_task(task)
-                assert "my-code-task" in dest.name
+    assert graph["metadata"]["target_repo_path"] == str(tmp_path / "repo")
+    assert graph["metadata"]["final_review_json"].endswith("planner-2026-04-04-demo-task/round_2/review.json")
+    assert graph["metadata"]["delivery_mode"] == "review_cycle"
 
-    def test_graph_yaml_includes_planner_metadata(self) -> None:
-        """Graph YAML must include planner_metadata block for run_task.py gating."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pending = Path(tmpdir) / "pending"
-            with patch("task_planner.PENDING_DIR", pending):
-                task = _make_code_task()
-                dest = write_review_cycle_task(task)
-                graph = yaml.safe_load(dest.read_text())
-        assert "planner_metadata" in graph, "Missing planner_metadata in graph YAML"
-        pm = graph["planner_metadata"]
-        assert pm.get("delivery_mode") == "review_cycle"
-        assert pm.get("task_kind") == "code_change"
-        assert pm.get("review_rounds") == 1
 
-    def test_graph_yaml_includes_final_review_json_reference(self) -> None:
-        """planner_metadata.final_review_json must point to round_1/review.json."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pending = Path(tmpdir) / "pending"
-            with patch("task_planner.PENDING_DIR", pending):
-                task = _make_code_task(review_rounds=1)
-                dest = write_review_cycle_task(task)
-                graph = yaml.safe_load(dest.read_text())
-        final_review_json = graph["planner_metadata"]["final_review_json"]
-        assert "round_1" in final_review_json, f"Expected round_1 in path: {final_review_json}"
-        assert final_review_json.endswith("review.json"), f"Expected review.json: {final_review_json}"
+def test_build_graph_rounds_one_still_emits_review_and_synthesis_tasks(tmp_path: Path) -> None:
+    """One-round graphs still contain the required review and synthesis stages."""
 
-    def test_graph_yaml_has_review_and_synthesis_tasks(self) -> None:
-        """1-round graph must still contain review and synthesis stages."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            pending = Path(tmpdir) / "pending"
-            with patch("task_planner.PENDING_DIR", pending):
-                task = _make_code_task(review_rounds=1)
-                dest = write_review_cycle_task(task)
-                graph = yaml.safe_load(dest.read_text())
-        task_names = list(graph.get("tasks", {}).keys())
-        assert any("review" in t for t in task_names), f"No review task in {task_names}"
-        assert any("synth" in t or "synthesis" in t for t in task_names), (
-            f"No synthesis task in {task_names}"
-        )
+    graph = launch_review_cycle.build_graph(
+        cycle_id="planner-2026-04-04-demo-task",
+        project_path=tmp_path / "repo",
+        objective="Implement the bounded change.",
+        rounds=1,
+        config=_config(tmp_path),
+    )
+
+    assert "implement_r1" in graph["tasks"]
+    assert "review_r1" in graph["tasks"]
+    assert "synthesize" in graph["tasks"]
+
+
+def test_default_context_and_synthesis_models_use_agent_runtime() -> None:
+    """File-writing graph defaults must resolve to agent-capable models."""
+
+    config = launch_review_cycle._load_config(None)
+    graph = launch_review_cycle.build_graph(
+        cycle_id="planner-2026-04-04-demo-task",
+        project_path=Path("/tmp/demo-repo"),
+        objective="Implement the bounded change.",
+        rounds=1,
+        config=config,
+    )
+
+    assert "context_init" not in graph["tasks"]
+    assert graph["tasks"]["review_r1"]["agent"] == "codex"
+    assert graph["tasks"]["review_r1"]["model"] == "codex"
+    assert graph["tasks"]["synthesize"]["model"] == "codex"
+
+
+def test_impl_prompt_requires_commit_before_finishing(tmp_path: Path) -> None:
+    """Implementation lanes must be told to commit so the commit gate can pass."""
+
+    graph = launch_review_cycle.build_graph(
+        cycle_id="planner-2026-04-04-demo-task",
+        project_path=tmp_path / "repo",
+        objective="Implement the bounded change.",
+        rounds=1,
+        config=_config(tmp_path),
+    )
+
+    prompt = graph["tasks"]["implement_r1"]["prompt"]
+    assert "Commit verified work with a descriptive commit message before finishing." in prompt
+
+
+def test_relative_workspace_dir_resolves_inside_project(tmp_path: Path) -> None:
+    """Relative workspace roots must stay inside the target repo boundary."""
+
+    graph = launch_review_cycle.build_graph(
+        cycle_id="planner-2026-04-04-demo-task",
+        project_path=tmp_path / "repo",
+        objective="Implement the bounded change.",
+        rounds=1,
+        config={
+            **_config(tmp_path),
+            "workspace_dir": ".openclaw/review-cycles",
+        },
+    )
+
+    context_path = Path(graph["tasks"]["context_init"]["outputs"]["context_pack"])
+    assert str(context_path).startswith(str((tmp_path / "repo").resolve()))

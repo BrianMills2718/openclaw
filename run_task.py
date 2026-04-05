@@ -6,18 +6,20 @@ validates results, and archives to completed/ or failed/.
 
 Supports two formats:
 - .md files: Flat tasks with YAML frontmatter (original format)
-- .yaml/.yml files: Task graph DAGs via the local ``task_graph`` runtime module
+- .yaml/.yml files: Task graph DAGs via llm_client.task_graph
 
 Usage:
     run_task.py [task_file]          # Run a specific task
     run_task.py                      # Run highest-priority pending task
     run_task.py --list               # List pending tasks
     run_task.py --dry-run [file]     # Parse and show what would run
+    run_task.py --audit-delivery-readiness [file]  # Check if a task is ready without executing it
 """
 
 import argparse
 import asyncio
 import fcntl
+import importlib
 import json
 import logging
 import os
@@ -33,11 +35,61 @@ from typing import Any
 import yaml
 
 
-def _prepend_repo_root_if_present(path: Path) -> None:
-    """Prepend a repo root to sys.path when it exists and is not already present."""
+def _module_facade_exists(root: Path, module_name: str) -> bool:
+    """Return True when a root exposes a concrete importable module facade."""
+
+    package_dir = root / module_name
+    return (package_dir / "__init__.py").is_file() or (root / f"{module_name}.py").is_file()
+
+
+def _pythonpath_module_root(module_name: str) -> Path | None:
+    """Return the first PYTHONPATH entry that exposes the requested module facade."""
+
+    raw_pythonpath = os.environ.get("PYTHONPATH", "")
+    if not raw_pythonpath:
+        return None
+    for entry in raw_pythonpath.split(os.pathsep):
+        if not entry:
+            continue
+        try:
+            root = Path(entry).expanduser().resolve()
+        except OSError:
+            continue
+        if root.is_dir() and _module_facade_exists(root, module_name):
+            return root
+    return None
+
+
+def _module_root_already_present(module_name: str) -> bool:
+    """Return True when an earlier sys.path entry already exposes the module root."""
+
+    for entry in sys.path:
+        try:
+            root = Path(entry).expanduser().resolve()
+        except OSError:
+            continue
+        if not root.exists() or not root.is_dir():
+            continue
+        if _module_facade_exists(root, module_name):
+            return True
+    return False
+
+
+def _prepend_repo_root_if_present(path: Path, *, module_name: str | None = None) -> None:
+    """Prepend a repo root to sys.path when no higher-priority module is set."""
 
     if not path.is_dir():
         return
+    if module_name:
+        preferred_root = _pythonpath_module_root(module_name)
+        if preferred_root is not None:
+            preferred = str(preferred_root)
+            if preferred in sys.path:
+                sys.path.remove(preferred)
+            sys.path.insert(0, preferred)
+            return
+        if _module_root_already_present(module_name):
+            return
     resolved = str(path.resolve())
     if resolved not in sys.path:
         sys.path.insert(0, resolved)
@@ -57,13 +109,35 @@ def _bootstrap_shared_import_roots() -> None:
         os.environ.get("PROJECTS_ROOT", str(Path.home() / "projects"))
     ).expanduser().resolve()
     for repo_name in ("llm_client", "agentic_scaffolding"):
-        _prepend_repo_root_if_present(projects_root / repo_name)
+        _prepend_repo_root_if_present(projects_root / repo_name, module_name=repo_name)
+    project_meta_root = Path(
+        os.environ.get("PROJECT_META_ROOT", str(projects_root / "project-meta"))
+    ).expanduser().resolve()
+    _prepend_repo_root_if_present(project_meta_root)
+    _prepend_repo_root_if_present(project_meta_root / "scripts" / "meta")
+
+
+def _bootstrap_runtime_env_defaults() -> None:
+    """Apply runtime transport defaults needed for autonomous agent execution.
+
+    OpenClaw file-writing Codex tasks are materially safer on explicit `cli`
+    transport. The current `auto` path can still spend most of a graph task in
+    the SDK lane before falling back, which leaves long review-cycle steps
+    exposed to the 300s task timeout even when `LLM_CLIENT_TIMEOUT_POLICY=ban`.
+    Operators can still override this per-run, but the autonomous default
+    should follow the path already proven to complete end to end.
+    """
+
+    os.environ.setdefault("LLM_CLIENT_CODEX_TRANSPORT", "cli")
 
 
 _bootstrap_shared_import_roots()
+_bootstrap_runtime_env_defaults()
 
 # Ensure sibling modules (spawn_extract) are importable
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+# Ensure project-meta root is importable (for scripts.meta.task_graph, scripts.meta.analyzer)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 TASKS_DIR = Path(os.environ.get("OPENCLAW_TASKS_DIR", Path.home() / ".openclaw" / "tasks"))
 COST_LOG = Path(os.environ.get("OPENCLAW_COST_LOG", Path.home() / ".openclaw" / "cost_log.jsonl"))
@@ -97,6 +171,7 @@ REPORTS_DIR = Path(os.environ.get(
     "OPENCLAW_REPORTS_DIR",
     TASKS_DIR / "reports",
 ))
+DEBUG_RUNTIME_PROVENANCE = os.environ.get("OPENCLAW_DEBUG_RUNTIME_PROVENANCE")
 
 PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 
@@ -106,6 +181,68 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("run_task")
+
+
+def _runtime_provenance_snapshot() -> dict[str, Any]:
+    """Collect import/runtime provenance for debugging script-entrypoint drift."""
+
+    snapshot: dict[str, Any] = {
+        "cwd": os.getcwd(),
+        "pid": os.getpid(),
+        "python": sys.executable,
+        "sys_path_head": sys.path[:8],
+        "env": {
+            "LLM_CLIENT_CODEX_TRANSPORT": os.environ.get("LLM_CLIENT_CODEX_TRANSPORT"),
+            "LLM_CLIENT_TIMEOUT_POLICY": os.environ.get("LLM_CLIENT_TIMEOUT_POLICY"),
+            "PYTHONPATH": os.environ.get("PYTHONPATH"),
+        },
+    }
+    try:
+        import llm_client  # type: ignore
+
+        snapshot["llm_client_file"] = getattr(llm_client, "__file__", None)
+    except Exception as exc:
+        snapshot["llm_client_import_error"] = f"{type(exc).__name__}: {exc}"
+
+    try:
+        import llm_client.sdk.agents as agents  # type: ignore
+
+        snapshot["agents_file"] = getattr(agents, "__file__", None)
+        snapshot["codex_transport_resolved"] = agents._codex_transport({})
+    except Exception as exc:
+        snapshot["agents_import_error"] = f"{type(exc).__name__}: {exc}"
+
+    try:
+        import llm_client.sdk.agents_codex as agents_codex  # type: ignore
+
+        snapshot["agents_codex_file"] = getattr(agents_codex, "__file__", None)
+        snapshot["agents_codex_has_subprocess"] = hasattr(agents_codex, "subprocess")
+        snapshot["agents_codex_call_cli_file"] = getattr(
+            getattr(agents_codex, "_call_codex_via_cli", None),
+            "__code__",
+            None,
+        ).co_filename if getattr(agents_codex, "_call_codex_via_cli", None) else None
+    except Exception as exc:
+        snapshot["agents_codex_import_error"] = f"{type(exc).__name__}: {exc}"
+
+    return snapshot
+
+
+def _write_runtime_provenance(event: str, **payload: Any) -> None:
+    """Append runtime provenance records when debug logging is enabled."""
+
+    if not DEBUG_RUNTIME_PROVENANCE:
+        return
+    path = Path(DEBUG_RUNTIME_PROVENANCE).expanduser()
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event": event,
+        **_runtime_provenance_snapshot(),
+        **payload,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True, default=str) + "\n")
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +290,50 @@ def _load_mcp_registry() -> dict[str, dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
+def _nonempty_text(value: Any) -> str | None:
+    """Return stripped text when a metadata field is a non-empty string."""
+
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _normalized_timestamp_text(value: Any) -> str | None:
+    """Normalize YAML timestamps to stable ISO text for audit/report payloads."""
+
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return _nonempty_text(value)
+
+
+def _yaml_scalar_text(value: Any) -> str:
+    """Render YAML scalars to stable text for runtime metadata fields."""
+
+    normalized_timestamp = _normalized_timestamp_text(value)
+    if normalized_timestamp is not None:
+        return normalized_timestamp
+    return "" if value is None else str(value)
+
+
+def _normalize_planner_lineage(value: Any) -> dict[str, Any] | None:
+    """Normalize planner lineage metadata loaded from YAML."""
+
+    if not isinstance(value, dict) or not value:
+        return None
+
+    normalized = dict(value)
+    planner_task_id = _nonempty_text(normalized.get("planner_task_id"))
+    if planner_task_id is not None:
+        normalized["planner_task_id"] = planner_task_id
+
+    generated_at = _normalized_timestamp_text(normalized.get("generated_at"))
+    if generated_at is not None:
+        normalized["generated_at"] = generated_at
+
+    return normalized
+
+
 @dataclass
 class TaskConstraints:
     """Budget and scope constraints for a single task."""
@@ -181,7 +362,9 @@ class TaskSpec:
     source_path: Path
     model: str | None = None  # Explicit model override; baseline requires it for flat tasks
     reasoning_effort: str | None = None  # "low", "medium", "high", "xhigh"
-    planner_lineage: dict | None = None  # Planner metadata (task_kind, delivery_mode, etc.)
+    task_kind: str | None = None
+    delivery_mode: str | None = None
+    planner_lineage: dict[str, Any] | None = None
 
     @classmethod
     def from_file(cls, path: Path) -> "TaskSpec":
@@ -207,7 +390,7 @@ class TaskSpec:
             priority=meta.get("priority", "medium"),
             agent=agent,
             project=str(meta["project"]).replace("~", str(Path.home())),
-            created=str(meta.get("created", "")),
+            created=_yaml_scalar_text(meta.get("created", "")),
             status=meta.get("status", "pending"),
             constraints=TaskConstraints(
                 max_turns=constraints_raw.get("max_turns", 30),
@@ -222,7 +405,9 @@ class TaskSpec:
             source_path=path,
             model=meta.get("model"),
             reasoning_effort=meta.get("reasoning_effort"),
-            planner_lineage=meta.get("planner_lineage") or {},
+            task_kind=meta.get("task_kind"),
+            delivery_mode=meta.get("delivery_mode"),
+            planner_lineage=_normalize_planner_lineage(meta.get("planner_lineage")),
         )
 
     def sort_key(self) -> tuple[int, str]:
@@ -452,17 +637,11 @@ def _run_validation(task: TaskSpec, pre_status: str = "") -> tuple[bool, str]:
     else:
         checks_passed.append("No new uncommitted changes")
 
-    # Check if test suite exists and passes.
-    # For docs_only/analysis_only tasks, skip tests: the agent only wrote docs,
-    # so pre-existing test failures are not attributable to this task.
-    task_kind = (task.planner_lineage or {}).get("task_kind", "")
-    _skip_tests = task_kind in ("docs_only", "analysis_only")
+    # Check if test suite exists and passes
     has_pytest = (project / "pytest.ini").exists() or (project / "pyproject.toml").exists()
     has_tests = (project / "tests").is_dir()
 
-    if _skip_tests:
-        checks_passed.append(f"Tests skipped (task_kind={task_kind!r})")
-    elif has_pytest and has_tests:
+    if has_pytest and has_tests:
         if venv_python.exists():
             test_result = subprocess.run(
                 [str(venv_python), "-m", "pytest", "--tb=short", "-q"],
@@ -511,17 +690,12 @@ def _run_validation(task: TaskSpec, pre_status: str = "") -> tuple[bool, str]:
     else:
         checks_passed.append("Event taxonomy parity skipped (not a governance repo)")
 
-    # Scaffold validators (syntax, stubs, test existence) when available.
-    # For docs_only/analysis_only tasks, skip stub detection: the agent only
-    # writes markdown; pre-existing Python stubs are not the agent's fault.
-    task_kind = (task.planner_lineage or {}).get("task_kind", "")
-    _skip_stubs = task_kind in ("docs_only", "analysis_only")
+    # Scaffold validators (syntax, stubs, test existence) when available
     try:
         from agentic_scaffolding.validators.fail_fast import fail_fast
-        ff_result = fail_fast(workspace=project, check_stubs=not _skip_stubs)
+        ff_result = fail_fast(workspace=project)
         if ff_result.passed:
-            label = "scaffold.fail_fast pass" + (" (stubs skipped)" if _skip_stubs else "")
-            checks_passed.append(label)
+            checks_passed.append("scaffold.fail_fast pass")
         else:
             checks_failed.append(f"scaffold.fail_fast: {'; '.join(ff_result.errors)}")
     except ImportError:
@@ -555,6 +729,145 @@ def _agent_committed(task: TaskSpec) -> bool:
         return bool(result.stdout.strip())
     except Exception:
         return False
+
+
+def _apply_delivery_contract_metadata(
+    report_payload: dict[str, Any],
+    *,
+    task_kind: str | None = None,
+    delivery_mode: str | None = None,
+    planner_lineage: dict[str, Any] | None = None,
+) -> None:
+    """Attach optional delivery-contract metadata to a report payload."""
+
+    if task_kind:
+        report_payload["task_kind"] = task_kind
+    if delivery_mode:
+        report_payload["delivery_mode"] = delivery_mode
+    normalized_planner_lineage = _normalize_planner_lineage(planner_lineage)
+    if normalized_planner_lineage:
+        report_payload["planner_lineage"] = normalized_planner_lineage
+
+
+def _graph_runtime_metadata(task_path: Path) -> dict[str, Any]:
+    """Read top-level graph metadata directly from the YAML artifact."""
+
+    payload = yaml.safe_load(task_path.read_text()) or {}
+    if not isinstance(payload, dict):
+        return {}
+    metadata = payload.get("metadata")
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _parse_iso_datetime(value: str) -> datetime:
+    """Parse a runtime ISO timestamp while tolerating a trailing Z suffix."""
+
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _evaluate_review_gate(review_json_path: Path) -> dict[str, Any]:
+    """Evaluate whether the final review artifact semantically approves the work."""
+
+    gate = {
+        "required": True,
+        "artifact_path": str(review_json_path),
+        "artifact_present": review_json_path.is_file(),
+        "artifact_valid": False,
+        "status": "missing",
+        "passed": False,
+    }
+    if not review_json_path.is_file():
+        gate["reason"] = "final review artifact missing"
+        return gate
+
+    try:
+        payload = json.loads(review_json_path.read_text())
+    except json.JSONDecodeError as exc:
+        gate["status"] = "invalid"
+        gate["reason"] = f"invalid review json: {exc}"
+        return gate
+
+    if not isinstance(payload, dict):
+        gate["status"] = "invalid"
+        gate["reason"] = "review artifact must be a JSON object"
+        return gate
+
+    gate["artifact_valid"] = True
+    gate["status"] = str(payload.get("status", "invalid"))
+    if "summary" in payload:
+        gate["summary"] = payload["summary"]
+    if gate["status"] == "pass":
+        gate["passed"] = True
+        return gate
+
+    gate["reason"] = "review status did not approve the graph"
+    return gate
+
+
+def _review_gate_failure_code(gate: dict[str, Any]) -> str:
+    """Map review-gate failure details to one runtime event code."""
+
+    status = gate.get("status")
+    if status == "missing":
+        return "OPENCLAW_GRAPH_REVIEW_MISSING"
+    if status == "invalid":
+        return "OPENCLAW_GRAPH_REVIEW_INVALID"
+    return "OPENCLAW_GRAPH_REVIEW_FAILED"
+
+
+def _detect_commit_evidence(project_path: Path, started_at: str) -> dict[str, Any]:
+    """Return whether a repo has a commit newer than the task start time."""
+
+    import subprocess
+
+    evidence = {
+        "required": True,
+        "commit_detected": False,
+        "commit_sha": None,
+        "commit_timestamp": None,
+        "passed": False,
+    }
+    try:
+        started_dt = _parse_iso_datetime(started_at)
+    except ValueError as exc:
+        evidence["reason"] = f"invalid started_at timestamp: {exc}"
+        return evidence
+
+    try:
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%H%x00%cI"],
+            cwd=project_path,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except Exception as exc:
+        evidence["reason"] = f"git log failed: {exc}"
+        return evidence
+
+    if result.returncode != 0 or not result.stdout.strip():
+        evidence["reason"] = "no commits available for target repo"
+        return evidence
+
+    commit_sha, _, commit_timestamp = result.stdout.strip().partition("\x00")
+    evidence["commit_sha"] = commit_sha or None
+    evidence["commit_timestamp"] = commit_timestamp or None
+    if not commit_timestamp:
+        evidence["reason"] = "latest commit timestamp missing"
+        return evidence
+
+    try:
+        commit_dt = _parse_iso_datetime(commit_timestamp)
+    except ValueError as exc:
+        evidence["reason"] = f"invalid commit timestamp: {exc}"
+        return evidence
+
+    evidence["commit_detected"] = commit_dt > started_dt
+    evidence["passed"] = evidence["commit_detected"]
+    if not evidence["passed"]:
+        evidence["reason"] = "latest commit is not newer than task start"
+    return evidence
 
 
 def _recoverable_postsuccess_agent_error_reason(
@@ -690,134 +1003,6 @@ def _log_cost(task_id: str, agent: str, model: str,
     with open(COST_LOG, "a") as f:
         f.write(json.dumps(entry) + "\n")
     log.info("Cost: $%.4f in %.1fs", cost_usd, duration_s)
-
-
-def _load_graph_yaml_raw(path: Path) -> dict[str, Any]:
-    """Load a YAML task graph file as a raw dict, returning {} on any failure.
-
-    Used to extract planner_metadata without going through the full typed loader.
-    Failures are silent because this is a best-effort gate check.
-    """
-    try:
-        import yaml
-        with open(path) as f:
-            return yaml.safe_load(f) or {}
-    except Exception:
-        return {}
-
-
-def _check_review_gate(
-    planner_metadata: dict[str, Any],
-) -> dict[str, Any]:
-    """Read the final review JSON for a planner-generated review_cycle graph.
-
-    Returns a dict with:
-    - passed: bool — True only when the review JSON exists, is valid, and status=='pass'
-    - status: str — 'pass', 'needs_changes', 'missing', 'invalid', or 'error'
-    - reason: str — human-readable explanation
-    - review_json_path: str — the expected path
-    - raw: dict | None — parsed review JSON when available
-    """
-    review_json_path = planner_metadata.get("final_review_json", "")
-    result: dict[str, Any] = {
-        "passed": False,
-        "status": "missing",
-        "reason": "",
-        "review_json_path": review_json_path,
-        "raw": None,
-    }
-
-    if not review_json_path:
-        result["reason"] = "planner_metadata.final_review_json not set"
-        return result
-
-    path = Path(review_json_path)
-    if not path.exists():
-        result["reason"] = f"Review JSON not found: {review_json_path}"
-        return result
-
-    try:
-        with open(path) as f:
-            review = json.load(f)
-        result["raw"] = review
-    except json.JSONDecodeError as e:
-        result["status"] = "invalid"
-        result["reason"] = f"Review JSON is not valid JSON: {e}"
-        return result
-    except Exception as e:
-        result["status"] = "error"
-        result["reason"] = f"Failed to read review JSON: {e}"
-        return result
-
-    review_status = review.get("status", "")
-    result["status"] = review_status or "invalid"
-    if review_status == "pass":
-        result["passed"] = True
-        result["reason"] = "review gate passed"
-    elif review_status == "needs_changes":
-        result["reason"] = f"review requires changes: {review.get('next_objective', '')}"
-    else:
-        result["reason"] = f"unexpected review status: '{review_status}'"
-
-    return result
-
-
-def _check_commit_evidence(
-    planner_metadata: dict[str, Any],
-    task_started_at: str,
-) -> dict[str, Any]:
-    """Check whether a new commit exists in the target repo since the task started.
-
-    Returns a dict with:
-    - passed: bool — True when at least one new commit exists since task_started_at
-    - commit_detected: bool
-    - commit_sha: str | None
-    - commit_timestamp: str | None
-    - reason: str
-    """
-    import subprocess
-
-    result: dict[str, Any] = {
-        "passed": False,
-        "commit_detected": False,
-        "commit_sha": None,
-        "commit_timestamp": None,
-        "reason": "",
-    }
-
-    target_repo = planner_metadata.get("target_repo", "")
-    if not target_repo:
-        result["reason"] = "planner_metadata.target_repo not set"
-        return result
-
-    repo_path = Path(target_repo)
-    if not repo_path.is_dir():
-        result["reason"] = f"Target repo not found: {target_repo}"
-        return result
-
-    try:
-        # Parse ISO start time to git-friendly format
-        started_dt = datetime.fromisoformat(task_started_at)
-        since_arg = started_dt.strftime("%Y-%m-%dT%H:%M:%S")
-        cmd = ["git", "log", "--oneline", f"--since={since_arg}", "-1",
-               "--format=%H %aI"]
-        proc = subprocess.run(
-            cmd, cwd=repo_path, capture_output=True, text=True, timeout=10,
-        )
-        output = proc.stdout.strip()
-        if output:
-            parts = output.split(" ", 1)
-            result["commit_detected"] = True
-            result["commit_sha"] = parts[0]
-            result["commit_timestamp"] = parts[1] if len(parts) > 1 else None
-            result["passed"] = True
-            result["reason"] = f"commit detected: {parts[0][:8]}"
-        else:
-            result["reason"] = f"no new commit in {target_repo} since {since_arg}"
-    except Exception as e:
-        result["reason"] = f"commit check failed: {e}"
-
-    return result
 
 
 def _safe_report_slug(value: str) -> str:
@@ -971,6 +1156,23 @@ def _run_graph_preflight(graph: Any, mcp_configs: dict[str, dict[str, Any]]) -> 
         })
     else:
         checks.append({"check": "graph_mcp_servers_configured", "passed": True})
+
+    missing_workdirs: list[str] = []
+    for task_id, task in graph.tasks.items():
+        raw_workdir = getattr(task, "working_directory", None)
+        if not isinstance(raw_workdir, str) or not raw_workdir.strip():
+            continue
+        workdir = Path(raw_workdir).expanduser().resolve()
+        if not workdir.is_dir():
+            missing_workdirs.append(f"{task_id}={workdir}")
+    if missing_workdirs:
+        failures.append({
+            "error_code": "OPENCLAW_PREFLIGHT_WORKDIR_MISSING",
+            "message": "Missing task working directory/directories: "
+            + ", ".join(sorted(missing_workdirs)),
+        })
+    else:
+        checks.append({"check": "graph_workdirs_exist", "passed": True})
 
     passed = len(failures) == 0
     return {
@@ -1354,12 +1556,25 @@ def _run_supervisor_loop(
 # ---------------------------------------------------------------------------
 
 
+def _load_graph_runtime_modules() -> tuple[Any, Any, Any, Any]:
+    """Import graph runtime modules in the order that preserves worktree overrides."""
+
+    task_graph_module = importlib.import_module("scripts.meta.task_graph")
+    analyzer_module = importlib.import_module("scripts.meta.analyzer")
+    return (
+        analyzer_module.analyze_run,
+        task_graph_module.ExecutionReport,
+        task_graph_module.load_graph,
+        task_graph_module.run_graph,
+    )
+
+
 async def _run_graph_task(task_path: Path) -> bool:
-    """Execute a YAML task graph via the local runtime cluster."""
-    from analyzer import analyze_run
-    from task_graph import ExecutionReport, load_graph, run_graph
+    """Execute a YAML task graph via llm_client.task_graph."""
+    analyze_run, ExecutionReport, load_graph, run_graph = _load_graph_runtime_modules()
 
     graph_ref = task_path.stem
+    graph_metadata = _graph_runtime_metadata(task_path)
     report_payload: dict[str, Any] = {
         "report_version": "v1",
         "task_type": "graph",
@@ -1368,6 +1583,12 @@ async def _run_graph_task(task_path: Path) -> bool:
         "status": "running",
         "started_at": datetime.now(timezone.utc).isoformat(),
     }
+    _apply_delivery_contract_metadata(
+        report_payload,
+        task_kind=graph_metadata.get("task_kind"),
+        delivery_mode=graph_metadata.get("delivery_mode"),
+        planner_lineage=graph_metadata.get("planner_lineage"),
+    )
     _record_decision_event(
         report_payload,
         decision_stage="dispatch",
@@ -1403,6 +1624,12 @@ async def _run_graph_task(task_path: Path) -> bool:
         graph = load_graph(active_path)
         graph_ref = graph.meta.id
         report_payload["graph_id"] = graph_ref
+        _write_runtime_provenance(
+            "graph_loaded",
+            graph_id=graph_ref,
+            task_file=str(active_path),
+            delivery_mode=graph_metadata.get("delivery_mode"),
+        )
         log.info("=== Running task graph: %s (%d tasks, %d waves) ===",
                  graph.meta.id, len(graph.tasks), len(graph.waves))
 
@@ -1441,6 +1668,12 @@ async def _run_graph_task(task_path: Path) -> bool:
             mcp_server_configs=mcp_configs,
             experiment_log=str(EXPERIMENT_LOG),
         )
+        _write_runtime_provenance(
+            "graph_finished",
+            graph_id=graph.meta.id,
+            report_status=report.status,
+            task_results=[tr.model_dump() for tr in report.task_results],
+        )
 
         # Log per-task costs to OpenClaw cost_log
         for tr in report.task_results:
@@ -1454,106 +1687,130 @@ async def _run_graph_task(task_path: Path) -> bool:
             )
 
         # Run self-improvement analyzer
-        analysis = analyze_run(
-            report,
-            experiment_log=str(EXPERIMENT_LOG),
-            proposals_log=str(PROPOSALS_LOG),
-            floors_path=str(FLOORS_PATH),
-        )
-        if analysis.proposals:
+        try:
+            analysis = analyze_run(
+                report,
+                experiment_log=str(EXPERIMENT_LOG),
+                proposals_log=str(PROPOSALS_LOG),
+                floors_path=str(FLOORS_PATH),
+            )
+        except Exception as exc:
+            analysis = None
+            log.warning("Analyzer failed after graph execution (continuing): %s", exc)
+            _record_decision_event(
+                report_payload,
+                decision_stage="analysis",
+                selected_action="skip_failed_analyzer",
+                decision_reason=f"optional analyzer raised {type(exc).__name__}",
+                evidence_refs=["OPENCLAW_GRAPH_ANALYZER_FAILED"],
+            )
+        if analysis and analysis.proposals:
             log.info("%d improvement proposals generated:", len(analysis.proposals))
             for p in analysis.proposals:
                 log.info("  [%s] %s: %s for %s", p.risk, p.category, p.action, p.task_id)
 
-        # Load planner metadata if present (Plan #2 semantic gating)
-        graph_dict = _load_graph_yaml_raw(active_path)
-        planner_metadata: dict[str, Any] = graph_dict.get("planner_metadata", {})
-        is_planner_review_cycle = (
-            planner_metadata.get("delivery_mode") == "review_cycle"
-        )
+        final_status = report.status
+        destination = "completed" if report.status == "completed" else "failed"
+        failure_codes: list[str] = [] if report.status == "completed" else ["OPENCLAW_GRAPH_RUN_FAILED"]
+        primary_failure_class = "none" if report.status == "completed" else "reasoning"
 
-        # Baseline routing from graph execution status
-        if report.status != "completed":
-            destination = "failed"
-            review_gate: dict[str, Any] = {}
-            commit_evidence: dict[str, Any] = {}
-            semantic_gate_reason = "graph execution did not complete"
-        elif is_planner_review_cycle:
-            # Phase 2: Semantic review gate — graph completion alone is not enough
-            review_gate = _check_review_gate(planner_metadata)
-            if not review_gate["passed"]:
-                destination = "failed"
-                semantic_gate_reason = f"review gate failed: {review_gate['reason']}"
-                commit_evidence = {}
-                log.warning("Review gate failed for %s: %s", graph.meta.id, review_gate["reason"])
-            else:
-                # Phase 3: Commit evidence check
-                commit_evidence = _check_commit_evidence(
-                    planner_metadata,
-                    task_started_at=report_payload["started_at"],
+        if report.status == "completed" and graph_metadata.get("delivery_mode") == "review_cycle":
+            final_review_path = Path(str(graph_metadata.get("final_review_json", ""))).expanduser()
+            review_gate = _evaluate_review_gate(final_review_path)
+            report_payload["review_gate"] = review_gate
+            if review_gate["passed"]:
+                _record_decision_event(
+                    report_payload,
+                    decision_stage="review_gate",
+                    selected_action="accept_review_pass",
+                    decision_reason="final review artifact approved the graph output",
+                    evidence_refs=[str(final_review_path)],
                 )
-                if not commit_evidence["passed"]:
-                    destination = "failed"
-                    semantic_gate_reason = (
-                        f"review passed but no commit: {commit_evidence['reason']}"
-                    )
-                    log.warning(
-                        "Commit gate failed for %s: %s", graph.meta.id, commit_evidence["reason"]
-                    )
-                else:
-                    destination = "completed"
-                    semantic_gate_reason = "review gate passed; commit detected"
-        else:
-            # Non-planner graph or flat delivery — existing behavior
-            destination = "completed"
-            review_gate = {}
-            commit_evidence = {}
-            semantic_gate_reason = "graph completed (no planner review gate)"
+            else:
+                final_status = "failed"
+                destination = "failed"
+                primary_failure_class = "reasoning"
+                failure_codes = [_review_gate_failure_code(review_gate)]
+                _record_decision_event(
+                    report_payload,
+                    decision_stage="review_gate",
+                    selected_action="route_to_failed_review_gate",
+                    decision_reason=review_gate.get("reason", "final review gate failed"),
+                    evidence_refs=failure_codes,
+                )
 
+        commit_required = (
+            final_status == "completed"
+            and graph_metadata.get("delivery_mode") == "review_cycle"
+            and isinstance(graph_metadata.get("planner_lineage"), dict)
+        )
+        if commit_required:
+            commit_evidence = _detect_commit_evidence(
+                Path(str(graph_metadata["target_repo_path"])).expanduser(),
+                report_payload["started_at"],
+            )
+            report_payload["commit_evidence"] = commit_evidence
+            if commit_evidence["passed"]:
+                _record_decision_event(
+                    report_payload,
+                    decision_stage="commit_gate",
+                    selected_action="accept_commit_evidence",
+                    decision_reason="target repo has a commit newer than graph start",
+                    evidence_refs=[commit_evidence["commit_sha"]] if commit_evidence["commit_sha"] else [],
+                )
+            else:
+                final_status = "failed"
+                destination = "failed"
+                primary_failure_class = "reasoning"
+                failure_codes = ["OPENCLAW_GRAPH_COMMIT_MISSING"]
+                _record_decision_event(
+                    report_payload,
+                    decision_stage="commit_gate",
+                    selected_action="route_to_failed_missing_commit",
+                    decision_reason=commit_evidence.get("reason", "commit evidence missing"),
+                    evidence_refs=failure_codes,
+                )
+
+        # Archive
         _move_task(active_path, destination)
-        report_payload["status"] = destination  # reflects semantic result, not just exec status
+        report_payload["status"] = final_status
         report_payload["destination"] = destination
-        report_payload["planner_lineage"] = planner_metadata if planner_metadata else {}
-        report_payload["review_gate"] = review_gate
-        report_payload["commit_evidence"] = commit_evidence
-
         _record_decision_event(
             report_payload,
             decision_stage="routing",
             selected_action=f"route_to_{destination}",
-            decision_reason=semantic_gate_reason,
-            evidence_refs=(
-                []
-                if destination == "completed"
-                else ["OPENCLAW_GRAPH_SEMANTIC_GATE_FAILED"]
+            decision_reason=(
+                f"graph execution status={report.status}; final routed status={final_status}"
             ),
+            evidence_refs=[] if final_status == "completed" else failure_codes,
         )
         report_payload["run"] = {
+            "graph_execution_status": report.status,
             "total_cost_usd": report.total_cost_usd,
             "total_duration_s": report.total_duration_s,
             "waves_completed": report.waves_completed,
             "waves_total": report.waves_total,
             "task_results_count": len(report.task_results),
         }
-        report_payload["primary_failure_class"] = "none" if destination == "completed" else "reasoning"
-        report_payload["failure_event_codes"] = (
-            [] if destination == "completed" else ["OPENCLAW_GRAPH_SEMANTIC_GATE_FAILED"]
-        )
+        report_payload["primary_failure_class"] = primary_failure_class
+        report_payload["failure_event_codes"] = failure_codes
         report_payload["finished_at"] = datetime.now(timezone.utc).isoformat()
         _write_task_report(graph_ref, report_payload)
 
-        log.info(
-            "=== Graph %s: %s (cost=$%.4f, duration=%.1fs, %d/%d waves) — %s ===",
-            destination.upper(), graph.meta.id,
-            report.total_cost_usd, report.total_duration_s,
-            report.waves_completed, report.waves_total,
-            semantic_gate_reason,
-        )
+        log.info("=== Graph %s: %s (cost=$%.4f, duration=%.1fs, %d/%d waves) ===",
+                 report.status.upper(), graph.meta.id,
+                 report.total_cost_usd, report.total_duration_s,
+                 report.waves_completed, report.waves_total)
 
-        return destination == "completed"
+        return final_status == "completed"
 
     except Exception as e:
         import traceback
+        _write_runtime_provenance(
+            "graph_exception",
+            graph_id=graph_ref,
+            error=f"{type(e).__name__}: {e}",
+        )
         log.error("Graph execution failed: %s: %s\n%s",
                   type(e).__name__, e, traceback.format_exc())
         _move_task(active_path, "failed")
@@ -1576,7 +1833,7 @@ async def _run_graph_task(task_path: Path) -> bool:
 
 def _dry_run_graph(task_path: Path) -> None:
     """Show what a task graph would do without executing."""
-    from task_graph import load_graph, run_graph
+    from scripts.meta.task_graph import load_graph, run_graph
 
     graph = load_graph(task_path)
     mcp_configs = _load_mcp_registry()
@@ -1612,6 +1869,167 @@ def _dry_run_graph(task_path: Path) -> None:
                     print(f"      - {v.get('type', '?')}: {v.get('path', v.get('command', '...'))}")
 
 
+def _audit_delivery_readiness(task_path: Path) -> dict[str, Any]:
+    """Check whether one task is executable without mutating queue state."""
+
+    budget_ok, spent_today = _check_daily_budget()
+    budget_check = {
+        "passed": budget_ok,
+        "spent_today_usd": spent_today,
+        "daily_budget_usd": DAILY_BUDGET_USD,
+    }
+    task_type = "graph" if _is_graph_file(task_path) else "flat"
+    audit: dict[str, Any] = {
+        "task_file": str(task_path),
+        "task_type": task_type,
+        "ready": False,
+        "budget_check": budget_check,
+        "preflight": {
+            "passed": False,
+            "checks": [],
+            "failures": [],
+            "failure_event_codes": [],
+            "primary_failure_class": "none",
+        },
+    }
+
+    try:
+        if task_type == "graph":
+            from scripts.meta.task_graph import load_graph
+
+            graph = load_graph(task_path)
+            metadata = _graph_runtime_metadata(task_path)
+            audit["graph_id"] = graph.meta.id
+            audit["description"] = graph.meta.description
+            audit["task_count"] = len(graph.tasks)
+            audit["wave_count"] = len(graph.waves)
+            _apply_delivery_contract_metadata(
+                audit,
+                task_kind=metadata.get("task_kind"),
+                delivery_mode=metadata.get("delivery_mode"),
+                planner_lineage=metadata.get("planner_lineage"),
+            )
+            audit["preflight"] = _run_graph_preflight(graph, _load_mcp_registry())
+        else:
+            task = TaskSpec.from_file(task_path)
+            audit["task_id"] = task.id
+            audit["title"] = task.title
+            audit["agent"] = task.agent
+            audit["model"] = task.model
+            audit["project"] = task.project
+            audit["priority"] = task.priority
+            audit["created"] = task.created
+            _apply_delivery_contract_metadata(
+                audit,
+                task_kind=task.task_kind,
+                delivery_mode=task.delivery_mode,
+                planner_lineage=task.planner_lineage,
+            )
+            audit["preflight"] = _run_flat_preflight(task)
+    except Exception as exc:
+        audit["preflight"] = {
+            "passed": False,
+            "checks": [],
+            "failures": [{
+                "error_code": "OPENCLAW_AUDIT_LOAD_FAILED",
+                "message": f"{type(exc).__name__}: {exc}",
+            }],
+            "failure_event_codes": ["OPENCLAW_AUDIT_LOAD_FAILED"],
+            "primary_failure_class": "composability",
+        }
+        return audit
+
+    audit["ready"] = budget_ok and bool(audit["preflight"].get("passed"))
+    return audit
+
+
+def _print_delivery_readiness_audit(audit: dict[str, Any]) -> None:
+    """Render one human-readable delivery-readiness audit."""
+
+    planner_task_id, planner_generated_at = _planner_lineage_fields(audit)
+
+    print(f"Ready for execution: {'YES' if audit['ready'] else 'NO'}")
+    print(f"Task file: {audit['task_file']}")
+    print(f"Task type: {audit['task_type']}")
+
+    if audit["task_type"] == "graph":
+        print(f"Graph: {audit.get('graph_id', 'unknown')}")
+        print(f"Description: {audit.get('description', '')}")
+        print(
+            f"Graph shape: {audit.get('task_count', 0)} tasks, "
+            f"{audit.get('wave_count', 0)} waves"
+        )
+    else:
+        print(f"Task: {audit.get('task_id', 'unknown')} — {audit.get('title', '')}")
+        print(f"Agent: {audit.get('agent', 'unknown')}")
+        print(f"Model: {audit.get('model') or 'MISSING'}")
+        print(f"Project: {audit.get('project', 'unknown')}")
+        print(f"Priority: {audit.get('priority', 'unknown')}")
+
+    _print_planner_lineage(planner_task_id, planner_generated_at)
+
+    if audit.get("task_kind"):
+        print(f"Task kind: {audit['task_kind']}")
+    if audit.get("delivery_mode"):
+        print(f"Delivery mode: {audit['delivery_mode']}")
+
+    budget_check = audit["budget_check"]
+    print(
+        "Budget check: "
+        f"{'PASS' if budget_check['passed'] else 'FAIL'} "
+        f"(spent=${budget_check['spent_today_usd']:.2f}, "
+        f"limit=${budget_check['daily_budget_usd']:.2f})"
+    )
+
+    preflight = audit["preflight"]
+    print(f"Preflight: {'PASS' if preflight.get('passed') else 'FAIL'}")
+
+    checks = preflight.get("checks") or []
+    if checks:
+        print("Checks:")
+        for check in checks:
+            print(f"  - {check.get('check', 'unknown')}: PASS")
+
+    failures = preflight.get("failures") or []
+    if failures:
+        print("Failures:")
+        for failure in failures:
+            print(f"  - {failure.get('error_code', 'UNKNOWN')}: {failure.get('message', '')}")
+
+
+def _planner_lineage_fields(audit: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Extract planner lineage identifiers from explicit metadata or flat-task fallbacks."""
+
+    planner_task_id: str | None = None
+    planner_generated_at: str | None = None
+    planner_lineage = audit.get("planner_lineage")
+    if isinstance(planner_lineage, dict):
+        planner_task_id = _nonempty_text(planner_lineage.get("planner_task_id"))
+        planner_generated_at = _normalized_timestamp_text(planner_lineage.get("generated_at"))
+
+    if not planner_task_id:
+        fallback_id = audit.get("task_id") if audit.get("task_type") == "flat" else audit.get("graph_id")
+        if isinstance(fallback_id, str) and fallback_id.startswith("planner-"):
+            planner_task_id = fallback_id
+
+    if not planner_generated_at and audit.get("task_type") == "flat":
+        planner_generated_at = _normalized_timestamp_text(audit.get("created"))
+
+    return planner_task_id, planner_generated_at
+
+
+def _print_planner_lineage(
+    planner_task_id: str | None,
+    planner_generated_at: str | None,
+) -> None:
+    """Print optional planner lineage fields in the delivery audit output."""
+
+    if planner_task_id:
+        print(f"Planner task ID: {planner_task_id}")
+    if planner_generated_at:
+        print(f"Planner generated at: {planner_generated_at}")
+
+
 # ---------------------------------------------------------------------------
 # Flat task runner (existing .md format)
 # ---------------------------------------------------------------------------
@@ -1630,6 +2048,12 @@ async def _run_flat_task(task_path: Path, *, parent_trace_id: str | None = None)
         "status": "running",
         "started_at": datetime.now(timezone.utc).isoformat(),
     }
+    _apply_delivery_contract_metadata(
+        report_payload,
+        task_kind=task.task_kind,
+        delivery_mode=task.delivery_mode,
+        planner_lineage=task.planner_lineage,
+    )
     _record_decision_event(
         report_payload,
         decision_stage="dispatch",
@@ -1995,6 +2419,14 @@ def main() -> None:
     parser.add_argument("--list", action="store_true", help="List pending tasks")
     parser.add_argument("--dry-run", action="store_true", help="Parse and show what would run")
     parser.add_argument(
+        "--audit-delivery-readiness",
+        action="store_true",
+        help=(
+            "Run a non-destructive readiness audit without executing the task; "
+            "prints planner lineage when present."
+        ),
+    )
+    parser.add_argument(
         "--scan-model-gaps",
         action="store_true",
         help="Scan pending/active tasks for missing explicit model declarations.",
@@ -2048,7 +2480,7 @@ def main() -> None:
             print(f"  [{t.priority}] {t.id}: {t.title} (agent={t.agent}, project={t.project})")
         for g in graph_files:
             try:
-                from task_graph import load_graph
+                from scripts.meta.task_graph import load_graph
                 graph = load_graph(g)
                 print(f"  [graph] {graph.meta.id}: {graph.meta.description} "
                       f"({len(graph.tasks)} tasks, {len(graph.waves)} waves)")
@@ -2170,6 +2602,11 @@ def main() -> None:
             print(f"\n--- Prompt ---\n")
             print(_build_prompt(task))
         return
+
+    if args.audit_delivery_readiness:
+        audit = _audit_delivery_readiness(task_path)
+        _print_delivery_readiness_audit(audit)
+        sys.exit(0 if audit["ready"] else 1)
 
     success = asyncio.run(run_task(task_path, parent_trace_id=args.parent_trace_id))
     sys.exit(0 if success else 1)

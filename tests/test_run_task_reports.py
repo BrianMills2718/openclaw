@@ -1,125 +1,160 @@
-"""Tests for Plan #2 Phase 4: report schema fields for delivery mode and gating.
-
-Verifies that graph reports carry the new fields (planner_lineage,
-review_gate, commit_evidence) and that flat reports remain backward-compatible.
-"""
+"""Tests for additive report metadata on flat and graph tasks."""
 
 from __future__ import annotations
 
-import json
+import asyncio
 import sys
-import tempfile
+import types
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
 
-_MOLTBOT_ROOT = Path(__file__).resolve().parent.parent
-if str(_MOLTBOT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_MOLTBOT_ROOT))
+import yaml
 
-from run_task import _write_task_report  # type: ignore[import]
+import run_task
 
 
-class TestGraphReportFields:
-    """Graph reports must carry delivery mode, review gate, and commit evidence."""
+def test_graph_report_records_delivery_mode_review_gate_and_commit_evidence(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Graph reports include the additive delivery, review, and commit fields."""
 
-    def test_graph_report_includes_planner_lineage(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            reports_dir = Path(tmpdir) / "reports"
-            with patch("run_task.REPORTS_DIR", reports_dir):
-                payload = {
-                    "report_version": "v1",
-                    "task_type": "graph",
-                    "graph_id": "test-graph",
-                    "status": "completed",
-                    "destination": "completed",
-                    "planner_lineage": {
-                        "delivery_mode": "review_cycle",
-                        "task_kind": "code_change",
-                    },
-                    "review_gate": {"passed": True, "status": "pass"},
-                    "commit_evidence": {"commit_detected": True, "commit_sha": "abc1234"},
-                    "finished_at": "2026-04-04T00:00:00+00:00",
-                }
-                out = _write_task_report("test-graph", payload)
-                written = json.loads(out.read_text())
-        assert "planner_lineage" in written
-        assert written["planner_lineage"]["delivery_mode"] == "review_cycle"
+    analyzer_module = types.ModuleType("scripts.meta.analyzer")
+    analyzer_module.analyze_run = lambda *args, **kwargs: SimpleNamespace(proposals=[])
+    task_graph_module = types.ModuleType("scripts.meta.task_graph")
+    task_graph_module.ExecutionReport = object
+    task_graph_module.load_graph = lambda path: SimpleNamespace(
+        meta=SimpleNamespace(id="graph-1"),
+        tasks={"implement_r1": {}, "review_r1": {}, "synthesize": {}},
+        waves=[["implement_r1"], ["review_r1"], ["synthesize"]],
+    )
 
-    def test_graph_report_includes_review_gate_outcome(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            reports_dir = Path(tmpdir) / "reports"
-            with patch("run_task.REPORTS_DIR", reports_dir):
-                payload = {
-                    "report_version": "v1",
-                    "task_type": "graph",
-                    "review_gate": {
-                        "passed": False,
-                        "status": "needs_changes",
-                        "reason": "too many issues",
-                    },
-                    "commit_evidence": {"commit_detected": False},
-                    "finished_at": "2026-04-04T00:00:00+00:00",
-                }
-                out = _write_task_report("test-graph-fail", payload)
-                written = json.loads(out.read_text())
-        assert written["review_gate"]["passed"] is False
-        assert written["review_gate"]["status"] == "needs_changes"
+    async def _run_graph(*args, **kwargs):
+        return SimpleNamespace(
+            status="completed",
+            total_cost_usd=0.1,
+            total_duration_s=1.0,
+            waves_completed=3,
+            waves_total=3,
+            task_results=[],
+        )
 
-    def test_graph_report_includes_commit_evidence(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            reports_dir = Path(tmpdir) / "reports"
-            with patch("run_task.REPORTS_DIR", reports_dir):
-                payload = {
-                    "report_version": "v1",
-                    "commit_evidence": {
-                        "commit_detected": True,
-                        "commit_sha": "deadbeef",
-                        "commit_timestamp": "2026-04-04T01:00:00+00:00",
-                        "passed": True,
-                    },
-                    "finished_at": "2026-04-04T00:00:00+00:00",
-                }
-                out = _write_task_report("test-graph-commit", payload)
-                written = json.loads(out.read_text())
-        assert written["commit_evidence"]["commit_sha"] == "deadbeef"
+    task_graph_module.run_graph = _run_graph
+    monkeypatch.setitem(sys.modules, "scripts.meta.analyzer", analyzer_module)
+    monkeypatch.setitem(sys.modules, "scripts.meta.task_graph", task_graph_module)
+
+    review_path = tmp_path / "workspace" / "graph-1" / "round_1" / "review.json"
+    review_path.parent.mkdir(parents=True)
+    review_path.write_text('{"status": "pass", "summary": "ok"}')
+    task_path = tmp_path / "graph-1.yaml"
+    task_path.write_text(
+        yaml.safe_dump(
+            {
+                "graph": {"id": "graph-1", "description": "demo", "timeout_minutes": 30, "checkpoint": "none"},
+                "tasks": {"implement_r1": {}, "review_r1": {}, "synthesize": {}},
+                "metadata": {
+                    "delivery_mode": "review_cycle",
+                    "task_kind": "code_change",
+                    "target_repo_path": str(tmp_path / "repo"),
+                    "final_review_json": str(review_path),
+                    "planner_lineage": {"planner_task_id": "planner-2026-04-04-demo-task"},
+                },
+            },
+            sort_keys=False,
+        )
+    )
+    reports: list[dict[str, object]] = []
+
+    monkeypatch.setattr(run_task, "_check_daily_budget", lambda: (True, 0.0))
+    monkeypatch.setattr(run_task, "_load_mcp_registry", lambda: {})
+    monkeypatch.setattr(run_task, "_run_graph_preflight", lambda graph, mcp_configs: {"passed": True})
+    monkeypatch.setattr(run_task, "_move_task", lambda path, destination: path)
+    monkeypatch.setattr(run_task, "_write_task_report", lambda task_ref, payload: reports.append(payload) or tmp_path / "report.json")
+    monkeypatch.setattr(
+        run_task,
+        "_detect_commit_evidence",
+        lambda project_path, started_at: {
+            "required": True,
+            "passed": True,
+            "commit_detected": True,
+            "commit_sha": "abc123",
+            "commit_timestamp": "2026-04-04T01:02:03+00:00",
+        },
+    )
+
+    asyncio.run(run_task._run_graph_task(task_path))
+
+    assert reports[-1]["delivery_mode"] == "review_cycle"
+    assert reports[-1]["task_kind"] == "code_change"
+    assert reports[-1]["planner_lineage"]["planner_task_id"] == "planner-2026-04-04-demo-task"
+    assert reports[-1]["review_gate"]["passed"] is True
+    assert reports[-1]["commit_evidence"]["commit_sha"] == "abc123"
 
 
-class TestFlatReportBackwardCompat:
-    """Flat task reports must remain valid (additive-only changes)."""
+def test_flat_report_records_planner_lineage_when_present(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Flat task reports keep additive planner lineage without breaking compatibility."""
 
-    def test_flat_report_without_new_fields_still_writes(self) -> None:
-        """A flat report without planner_lineage must still serialize and write."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            reports_dir = Path(tmpdir) / "reports"
-            with patch("run_task.REPORTS_DIR", reports_dir):
-                payload = {
-                    "report_version": "v1",
-                    "task_type": "flat",
-                    "task_id": "old-style-task",
-                    "status": "completed",
-                    "finished_at": "2026-04-04T00:00:00+00:00",
-                }
-                out = _write_task_report("old-style-task", payload)
-                written = json.loads(out.read_text())
-        assert written["task_type"] == "flat"
-        assert written["status"] == "completed"
-        # New fields absent — that's fine for old reports
-        assert "planner_lineage" not in written
+    task_path = tmp_path / "planner-2026-04-04-docs-refresh.md"
+    task_path.write_text(
+        """---
+id: planner-2026-04-04-docs-refresh
+priority: medium
+agent: codex
+model: codex
+project: {project}
+created: 2026-04-04T00:00:00+00:00
+status: pending
+task_kind: docs_only
+delivery_mode: flat
+planner_lineage:
+  planner_task_id: planner-2026-04-04-docs-refresh
+constraints:
+  max_turns: 12
+  max_budget_usd: 1.0
+---
+# Refresh docs
 
-    def test_flat_report_with_planner_lineage_records_it(self) -> None:
-        """When planner_lineage is present in a flat report, it is preserved."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            reports_dir = Path(tmpdir) / "reports"
-            with patch("run_task.REPORTS_DIR", reports_dir):
-                payload = {
-                    "report_version": "v1",
-                    "task_type": "flat",
-                    "planner_lineage": {
-                        "delivery_mode": "flat",
-                        "task_kind": "docs_only",
-                    },
-                    "finished_at": "2026-04-04T00:00:00+00:00",
-                }
-                out = _write_task_report("new-flat-task", payload)
-                written = json.loads(out.read_text())
-        assert written["planner_lineage"]["delivery_mode"] == "flat"
+## Objective
+Refresh docs.
+
+## Acceptance Criteria
+- [ ] Docs updated
+""".format(project=tmp_path)
+    )
+    reports: list[dict[str, object]] = []
+
+    monkeypatch.setattr(run_task, "_check_daily_budget", lambda: (True, 0.0))
+    monkeypatch.setattr(run_task, "_run_flat_preflight", lambda task: {"passed": True})
+    monkeypatch.setattr(run_task, "_move_task", lambda path, destination: path)
+    monkeypatch.setattr(run_task, "_append_status_log", lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_task, "_append_result", lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_task, "_log_cost", lambda *args, **kwargs: None)
+    monkeypatch.setattr(run_task, "_run_validation", lambda task, pre_status="": (True, "ok"))
+    monkeypatch.setattr(run_task, "_write_task_report", lambda task_ref, payload: reports.append(payload) or tmp_path / "report.json")
+
+    async def _execute_flat_task(task, *, parent_trace_id=None, attempt_context=""):
+        return {
+            "trace_id": "trace-1",
+            "model": "codex",
+            "cost_usd": 0.1,
+            "duration_s": 1.0,
+            "tool_calls_count": 0,
+            "finish_reason": "stop",
+            "usage": {},
+            "primary_failure_class": "none",
+            "failure_event_codes": [],
+            "failure_event_code_counts": {},
+            "content": "",
+        }
+
+    monkeypatch.setattr(run_task, "_execute_flat_task", _execute_flat_task)
+
+    completed = asyncio.run(run_task._run_flat_task(task_path))
+
+    assert completed is True
+    assert reports[-1]["delivery_mode"] == "flat"
+    assert reports[-1]["task_kind"] == "docs_only"
+    assert reports[-1]["planner_lineage"]["planner_task_id"] == "planner-2026-04-04-docs-refresh"
