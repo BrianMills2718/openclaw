@@ -6,6 +6,12 @@
 **Blocked By:** Merge of Plan #2 branches into canonical `llm_client` and `openclaw`
 **Blocks:** Faster diagnosis of post-merge runtime failures without ad hoc provenance files
 
+**Note:** This implementation and its proof evidence are complete, but the repo
+currently has a separate legacy file with the same `Plan #3` number
+(`03_phase63_autonomous_daily_cycle.md`). The shared plan-status guard keys on
+plan number, so completion is recorded in the proof tracker and completion
+evidence below until the numbering collision is cleaned up.
+
 ---
 
 ## Gap
@@ -114,3 +120,13 @@ Plan #3 is complete only when:
 - the code and schema are committed
 - the targeted tests pass
 - one fresh planner-generated non-doc code proof report contains the new `task_results` summaries
+
+Verified completion evidence:
+
+- targeted tests:
+  - `python -m pytest -q tests/test_run_task_reports.py tests/test_run_task_review_gate.py`
+  - `python -m pytest -q tests/test_runtime_bootstrap_imports.py tests/test_run_task_delivery_audit.py tests/test_run_task_reports.py tests/test_task_planner_delivery_modes.py`
+- failed truth-seeking proof that exposed the execution-status normalization gap:
+  - `/tmp/openclaw-proof-plan3-task-results-live/reports/planner-2026-04-05-add-failing-task-id-to-report_20260405T140726Z.json`
+- successful fresh planner-generated code proof with bounded `task_results`:
+  - `/tmp/openclaw-proof-plan3-task-wave-live/reports/planner-2026-04-05-add-failing-task-wave-to-report-triage_20260405T141713Z.json`
