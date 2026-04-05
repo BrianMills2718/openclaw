@@ -1,6 +1,7 @@
 # docs
 
-Maintained documentation for `moltbot` / OpenClaw setup.
+Maintained documentation for the `moltbot` runtime repo and its OpenClaw-derived
+runtime family.
 
 ## Route By Question
 
@@ -10,5 +11,5 @@ Maintained documentation for `moltbot` / OpenClaw setup.
 ## Working Rules
 
 - Keep this parent file at routing level only.
-- OpenClaw service state and machine-transfer notes belong in repo root docs,
+- Runtime service state and machine-transfer notes belong in repo root docs,
   not duplicated here.

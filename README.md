@@ -1,4 +1,13 @@
-# OpenClaw Task Runner Assets
+# moltbot
+
+Current implementation repo for the local-first `agent runtime /
+orchestration system`. The runtime family is OpenClaw-derived, but the repo is
+`moltbot`, not `OpenClaw`.
+
+Runtime identity:
+- generic layer: `agent runtime / orchestration system`
+- runtime family / instance: `OpenClaw`
+- current implementation repo: `moltbot`
 
 Versioned mirror of runtime assets currently executed from `$HOME/.openclaw`.
 
@@ -93,7 +102,10 @@ Delivery-readiness audit:
   task is not ready and the printed audit explains why.
 
 Governance boundary:
-- OpenClaw is an orchestration layer, not the canonical home of per-repo rules.
+- `moltbot` is the current runtime implementation; `OpenClaw` is the runtime
+  family name.
+- The generic runtime layer is `agent runtime / orchestration system`.
+- The runtime layer is not the canonical home of per-repo rules.
 - Repo-local governance should stay in the target repo's `CLAUDE.md` and
   `scripts/relationships.yaml`.
 - `AGENTS.md` should be a generated Codex-oriented projection of that same
@@ -103,7 +115,7 @@ Operator contract:
 
 - Human provides: mission objective, repo-local success criteria, and a clear
   maximum-authority boundary for each run.
-- OpenClaw executes: bounded task cycles, runs review/proposal cycle hooks,
+- `moltbot` executes bounded task cycles, runs review/proposal cycle hooks,
   evaluates mission success criteria, and stops only on completion or an
   explicit escalation condition.
 - Human intervention required for: strategic ambiguity, repeated local repair
@@ -113,7 +125,7 @@ Operator contract:
 Mission success criteria contract:
 
 - Repo contract path: `.openclaw/success-criteria.yaml`.
-- OpenClaw expects one of:
+- The runtime expects one of:
   - inline `success_criteria` in the mission YAML
   - or (if omitted) auto-loads `.openclaw/success-criteria.yaml` from the repo.
 - Contract format:
@@ -134,8 +146,18 @@ success_criteria:
     description: prove readiness
 ```
 
-This contract is intended to be machine-readable and explicit, so OpenClaw runs can
+This contract is intended to be machine-readable and explicit, so runtime runs can
 be governed by objective-level criteria instead of ad hoc assumptions.
+
+## Runtime Evaluation Status
+
+The current runtime verdict is:
+- keep `moltbot` as the implementation repo for now
+- keep Junior as the strongest pattern/customization reference
+- treat NanoClaw as disqualified for the governed coding-runtime proof
+
+The runtime category is still generic by design. Do not use `OpenClaw` as the
+category label, and do not treat `moltbot` as the category either.
 
 Ownership boundary (2026-04-04):
 - Status: active canonical home for the runtime cluster (`run_task.py`,

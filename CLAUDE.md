@@ -1,7 +1,13 @@
-# Moltbot / OpenClaw
+# moltbot
 
-This repo is the **canonical home** of the OpenClaw runtime: task runner,
-task planner, review cycle launcher, and supporting assets.
+This repo is the **canonical home** of the current agent runtime /
+orchestration system implementation: task runner, task planner, review cycle
+launcher, and supporting assets.
+
+Runtime identity:
+- generic layer: `agent runtime / orchestration system`
+- runtime family / instance: `OpenClaw`
+- current implementation repo: `moltbot`
 
 Runtime code was imported from `project-meta/ops/openclaw/` on 2026-04-01
 to make project-meta documentation-focused.
@@ -31,7 +37,11 @@ claiming the runtime path is usable on the current host.
 
 ## Working Rules
 
-- OpenClaw is an orchestration layer, not the home of repo-local governance
+- `moltbot` is the current runtime implementation; `OpenClaw` names the runtime
+  family, not the generic category
+- The generic category is `agent runtime / orchestration system`, not
+  `OpenClaw` and not `moltbot`
+- The runtime layer is not the home of repo-local governance
 - When runtime behavior changes, update tests and README in the same change
 - This repo is canonical; `$HOME/.openclaw` paths are symlinks to here
 
