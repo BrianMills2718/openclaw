@@ -1,0 +1,176 @@
+"""Moltbot-local task-graph shim with narrow post-success recovery.
+
+This repo still relies on the task-graph implementation that lives in
+`project-meta/scripts/meta/task_graph.py`. The shim keeps the canonical import
+surface (`scripts.meta.task_graph`) local to `moltbot` while adding one runtime
+recovery rule discovered during end-to-end proof runs: if a workspace-agent task
+returns `FAILED` but its declared validators now pass, treat that task as
+completed and allow the graph to continue.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import logging
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+
+logger = logging.getLogger(__name__)
+
+
+def _prepend_repo_root_if_present(path: Path) -> None:
+    """Prepend a repo root when it exists and is not already importable."""
+
+    if not path.is_dir():
+        return
+    resolved = str(path.resolve())
+    if resolved not in sys.path:
+        sys.path.insert(0, resolved)
+
+
+_PROJECTS_ROOT = Path(
+    os.environ.get("PROJECTS_ROOT", str(Path.home() / "projects"))
+).expanduser().resolve()
+for _repo_name in ("llm_client", "agentic_scaffolding"):
+    _prepend_repo_root_if_present(_PROJECTS_ROOT / _repo_name)
+_PROJECT_META_TASK_GRAPH = (
+    Path(os.environ.get("PROJECT_META_ROOT", str(_PROJECTS_ROOT / "project-meta")))
+    .expanduser()
+    .resolve()
+    / "scripts"
+    / "meta"
+    / "task_graph.py"
+)
+
+if not _PROJECT_META_TASK_GRAPH.is_file():
+    raise FileNotFoundError(
+        "Expected canonical task_graph implementation at "
+        f"{_PROJECT_META_TASK_GRAPH}"
+    )
+
+_SPEC = importlib.util.spec_from_file_location(
+    "_project_meta_task_graph_runtime",
+    _PROJECT_META_TASK_GRAPH,
+)
+if _SPEC is None or _SPEC.loader is None:
+    raise ImportError(f"Could not load task_graph spec from {_PROJECT_META_TASK_GRAPH}")
+_MODULE = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_MODULE)
+
+TaskStatus = _MODULE.TaskStatus
+TaskDef = _MODULE.TaskDef
+GraphMeta = _MODULE.GraphMeta
+TaskGraph = _MODULE.TaskGraph
+Uncertainty = _MODULE.Uncertainty
+TaskResult = _MODULE.TaskResult
+ExperimentRecord = _MODULE.ExperimentRecord
+ExecutionReport = _MODULE.ExecutionReport
+load_graph = _MODULE.load_graph
+toposort_waves = _MODULE.toposort_waves
+_validate_dag = _MODULE._validate_dag
+_resolve_task_model = _MODULE._resolve_task_model
+_resolve_templates = _MODULE._resolve_templates
+_is_agent_model_family = _MODULE._is_agent_model_family
+_make_experiment_record = _MODULE._make_experiment_record
+_append_experiment = _MODULE._append_experiment
+_git_checkpoint = _MODULE._git_checkpoint
+
+_ORIGINAL_EXECUTE_TASK = _MODULE._execute_task
+
+TaskGraph.model_rebuild(
+    force=True,
+    _types_namespace={"Any": Any, "GraphMeta": GraphMeta, "TaskDef": TaskDef},
+)
+TaskResult.model_rebuild(
+    force=True,
+    _types_namespace={
+        "Any": Any,
+        "TaskStatus": TaskStatus,
+        "ValidationResult": _MODULE.ValidationResult,
+        "Uncertainty": Uncertainty,
+    },
+)
+ExecutionReport.model_rebuild(
+    force=True,
+    _types_namespace={"Any": Any, "TaskResult": TaskResult},
+)
+
+
+def _recover_postsuccess_failure(
+    task: Any,
+    result: Any,
+) -> Any:
+    """Recover a failed agent task when its declared validators now pass."""
+
+    if getattr(result, "status", None) != TaskStatus.FAILED:
+        return result
+    validators = getattr(task, "validators", None) or []
+    if not validators:
+        return result
+
+    validation_results = _MODULE.run_validators(validators)
+    def _validator_passed(item: Any) -> bool:
+        if isinstance(item, dict):
+            return bool(item.get("passed"))
+        return bool(getattr(item, "passed", False))
+
+    if not all(_validator_passed(v) for v in validation_results):
+        return result
+
+    logger.warning(
+        "Recovering failed task-graph task %s after validators passed",
+        getattr(task, "id", "<unknown>"),
+    )
+    return TaskResult(
+        task_id=result.task_id,
+        status=TaskStatus.COMPLETED,
+        wave=result.wave,
+        model_selected=result.model_selected,
+        difficulty=result.difficulty,
+        duration_s=result.duration_s,
+        cost_usd=result.cost_usd,
+        tokens_in=result.tokens_in,
+        tokens_out=result.tokens_out,
+        validation_results=validation_results,
+        agent_output=result.agent_output,
+        reasoning_effort=result.reasoning_effort,
+        background_mode=result.background_mode,
+        requested_model=result.requested_model,
+        resolved_model=result.resolved_model,
+        routing_trace=result.routing_trace,
+        spec_hash=result.spec_hash,
+        uncertainties=result.uncertainties,
+    )
+
+
+async def _execute_task(
+    *,
+    task: Any,
+    wave_idx: int,
+    graph: Any,
+    model_floors: dict[str, dict[str, Any]] | None,
+    mcp_server_configs: dict[str, dict[str, Any]],
+    completed_results: dict[str, Any],
+    completed_outputs: dict[str, dict[str, str]],
+    working_directory: str | None,
+) -> Any:
+    """Delegate to the canonical executor and apply narrow post-success recovery."""
+
+    result = await _ORIGINAL_EXECUTE_TASK(
+        task=task,
+        wave_idx=wave_idx,
+        graph=graph,
+        model_floors=model_floors,
+        mcp_server_configs=mcp_server_configs,
+        completed_results=completed_results,
+        completed_outputs=completed_outputs,
+        working_directory=working_directory,
+    )
+    return _recover_postsuccess_failure(task, result)
+
+
+_MODULE._execute_task = _execute_task
+run_graph = _MODULE.run_graph

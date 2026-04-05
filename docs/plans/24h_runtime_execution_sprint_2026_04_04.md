@@ -211,3 +211,17 @@ If a hard stop condition occurs:
   workspace roots under the target repo
 - Added a regression test to keep relative cycle workspaces inside the repo
 - Next phase: regenerate the proof graph again and continue the end-to-end run
+
+### 2026-04-04T05:00:00Z
+
+- Third proof attempt proved the repo-local workspace fix worked:
+  `context_pack.md` was actually written inside `.openclaw/review-cycles/`
+- The remaining blocker was a false-negative task-graph failure after validated
+  outputs existed
+- Added local `scripts/meta/task_graph.py` and `scripts/meta/analyzer.py` shims
+  so `moltbot` owns the runtime import surface while still delegating to the
+  canonical `project-meta` implementations
+- Added narrow validator-backed post-success recovery for failed graph tasks and
+  a regression test that locks the behavior down
+- Next phase: rerun the exact proof graph against the local shim and continue
+  through implementation/review/commit gating

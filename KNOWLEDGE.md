@@ -86,3 +86,18 @@ The current safe default is a repo-local workspace root:
 
 That keeps context packs, implementation notes, review JSON, and synthesis
 artifacts inside the repo tree the workspace agent can actually mutate.
+
+### 2026-04-04 — codex — workaround
+
+The task-graph runner can still report a workspace-agent task as failed after
+the task already produced its declared outputs. This showed up in the
+review-cycle proof when `context_init` wrote `context_pack.md` but the graph
+stopped with `status=partial`.
+
+Current local fix in `moltbot/scripts/meta/task_graph.py`:
+- delegate to the canonical `project-meta` task-graph implementation
+- re-run declared validators on a failed task result
+- if validators now pass, recover that task to `COMPLETED` and continue
+
+Keep this recovery narrow and validator-backed. Do not use it to mask tasks
+whose declared outputs still fail validation.
