@@ -234,3 +234,15 @@ If a hard stop condition occurs:
   definitively owns `scripts.meta.task_graph` and `scripts.meta.analyzer`
 - Extended tests now pass against the explicit local package boundary
 - Next phase: rerun the end-to-end proof on the now-localized graph runtime
+
+### 2026-04-04T07:00:00Z
+
+- Phase G completed: `run_task.py` now exposes `--audit-delivery-readiness` as
+  a non-destructive operator path before queue execution
+- Added audit coverage for flat tasks, graph tasks, graph-load failure
+  observability, and CLI early exit without dispatch
+- Updated the README rollout boundary section so the readiness audit is part of
+  the documented operator workflow
+- Next phase: rerun the planner-generated proof task and isolate the remaining
+  `implement_r1` workspace-agent failure from the already-fixed orchestration
+  seams

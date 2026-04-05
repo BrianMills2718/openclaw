@@ -2161,6 +2161,11 @@ def main() -> None:
     parser.add_argument("--list", action="store_true", help="List pending tasks")
     parser.add_argument("--dry-run", action="store_true", help="Parse and show what would run")
     parser.add_argument(
+        "--audit-delivery-readiness",
+        action="store_true",
+        help="Run a non-destructive readiness audit without executing the task.",
+    )
+    parser.add_argument(
         "--scan-model-gaps",
         action="store_true",
         help="Scan pending/active tasks for missing explicit model declarations.",
@@ -2336,6 +2341,11 @@ def main() -> None:
             print(f"\n--- Prompt ---\n")
             print(_build_prompt(task))
         return
+
+    if args.audit_delivery_readiness:
+        audit = _audit_delivery_readiness(task_path)
+        _print_delivery_readiness_audit(audit)
+        sys.exit(0 if audit["ready"] else 1)
 
     success = asyncio.run(run_task(task_path, parent_trace_id=args.parent_trace_id))
     sys.exit(0 if success else 1)

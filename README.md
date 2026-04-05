@@ -37,6 +37,7 @@ Runtime behavior (current):
   than introducing an OpenClaw-only policy file.
 - Operators can audit and migrate legacy flat tasks before stricter supervisor
   gating lands:
+  - `python ops/openclaw/run_task.py --audit-delivery-readiness <task-file>`
   - `python ops/openclaw/run_task.py --scan-model-gaps`
   - `python ops/openclaw/run_task.py --repair-flat-models`
   - `python ops/openclaw/run_task.py --repair-flat-models --repair-default-model <model> --apply-repairs`
