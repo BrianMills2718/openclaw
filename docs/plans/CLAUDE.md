@@ -10,6 +10,7 @@ Track all implementation work here.
 | 2 | [End-to-End Planner -> Review -> Commit Flow](02_end_to_end_planner_review_commit_flow.md) | High | ✅ Complete | - |
 | 3 | [Graph Report Task-Result Observability](03_graph_report_task_result_observability.md) | High | 🚧 In Progress | Merge of Plan #2 branches |
 | 4 | [run_task.py Observability and Cost Tracking](04_run_task_observability.md) | Medium | ✅ Complete | - |
+| 5 | [Runtime Naming and Evaluation Convergence](05_runtime_naming_and_evaluation_convergence.md) | High | 📋 Planned | - |
 
 ## Active Execution Tracker
 
