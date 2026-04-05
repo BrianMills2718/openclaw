@@ -472,6 +472,22 @@ def write_review_cycle_task_file(
     from launch_review_cycle import _load_config, build_graph
 
     cfg = dict(config) if config is not None else _load_config(None)
+    cfg = {
+        **cfg,
+        "agents": {
+            **cfg["agents"],
+            "implement": {
+                **cfg["agents"]["implement"],
+                "agent": task["agent"],
+                "model": task["model"],
+            },
+            "synthesis": {
+                **cfg["agents"]["synthesis"],
+                "agent": task["agent"],
+                "model": task["model"],
+            },
+        },
+    }
     PENDING_DIR.mkdir(parents=True, exist_ok=True)
     project_path = Path(task["project"]).expanduser().resolve()
     graph = build_graph(

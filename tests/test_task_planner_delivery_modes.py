@@ -132,3 +132,55 @@ def test_write_review_cycle_task_emits_graph_yaml_with_deterministic_id(
     assert payload["metadata"]["delivery_mode"] == "review_cycle"
     assert payload["metadata"]["planner_lineage"]["planner_task_id"] == "planner-2026-04-04-demo-task"
     assert payload["metadata"]["file_scope"] == ["run_task.py", "task_planner.py"]
+    assert payload["tasks"]["implement_r1"]["agent"] == "codex"
+    assert payload["tasks"]["implement_r1"]["model"] == "codex"
+
+
+def test_write_review_cycle_task_uses_planner_selected_agent_for_impl_and_synthesis(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Planner-selected implementation agent/model propagate into the graph lanes."""
+
+    created_at = datetime(2026, 4, 4, 4, 5, 6, tzinfo=timezone.utc)
+    queue_dir = tmp_path / "pending"
+    project_dir = tmp_path / "repo"
+    project_dir.mkdir()
+    monkeypatch.setattr(task_planner, "PENDING_DIR", queue_dir)
+    task = task_planner._validate_generated_task(
+        _base_task(
+            agent="claude-code",
+            model="claude-3-5-sonnet-20240620",
+            project=str(project_dir),
+        )
+    )
+
+    path = task_planner.write_task_file(
+        task,
+        created_at=created_at,
+        config={
+            "queue_dir": str(queue_dir),
+            "workspace_dir": ".openclaw/review-cycles",
+            "cycle": {"timeout_minutes": 90, "checkpoint": "none"},
+            "agents": {
+                "implement": {"agent": "codex", "model": None, "difficulty": 3, "mcp_servers": []},
+                "review": {
+                    "agent": "direct",
+                    "model": "gpt-5.2-pro",
+                    "reasoning_effort": "xhigh",
+                    "difficulty": 5,
+                    "mcp_servers": [],
+                },
+                "context": {"agent": "codex", "model": None, "difficulty": 2, "mcp_servers": []},
+                "synthesis": {"agent": "codex", "model": None, "difficulty": 2, "mcp_servers": []},
+            },
+            "context_pack": {"enabled": False, "filename": "context_pack.md"},
+            "validation": {"require_json_review": True},
+        },
+    )
+
+    payload = yaml.safe_load(path.read_text())
+    assert payload["tasks"]["implement_r1"]["agent"] == "claude-code"
+    assert payload["tasks"]["implement_r1"]["model"] == "claude-3-5-sonnet-20240620"
+    assert payload["tasks"]["synthesize"]["agent"] == "claude-code"
+    assert payload["tasks"]["synthesize"]["model"] == "claude-3-5-sonnet-20240620"

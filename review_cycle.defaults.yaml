@@ -12,7 +12,7 @@ cycle:
   max_rounds: 8
 
 context_pack:
-  enabled: true
+  enabled: false
   filename: context_pack.md
 
 agents:

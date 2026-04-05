@@ -86,7 +86,7 @@ def test_default_context_and_synthesis_models_use_agent_runtime() -> None:
         config=config,
     )
 
-    assert graph["tasks"]["context_init"]["model"] == "codex"
+    assert "context_init" not in graph["tasks"]
     assert graph["tasks"]["synthesize"]["model"] == "codex"
 
 

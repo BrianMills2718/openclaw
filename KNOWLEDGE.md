@@ -101,3 +101,11 @@ Current local fix in `moltbot/scripts/meta/task_graph.py`:
 
 Keep this recovery narrow and validator-backed. Do not use it to mask tasks
 whose declared outputs still fail validation.
+
+### 2026-04-04 — codex — best-practice
+
+If `moltbot` needs to locally own `scripts.meta.*` shims, `scripts/` and
+`scripts/meta/` must be explicit local Python packages. Without local
+`__init__.py` files, Python can keep resolving `scripts.meta.task_graph` to the
+external `project-meta` namespace package, which makes local shims appear to be
+ignored even when the files exist.

@@ -225,3 +225,12 @@ If a hard stop condition occurs:
   a regression test that locks the behavior down
 - Next phase: rerun the exact proof graph against the local shim and continue
   through implementation/review/commit gating
+
+### 2026-04-04T06:00:00Z
+
+- The local shim initially did not take effect because `scripts.meta` was still
+  resolving to the external namespace package
+- Added local `scripts/__init__.py` and `scripts/meta/__init__.py` so `moltbot`
+  definitively owns `scripts.meta.task_graph` and `scripts.meta.analyzer`
+- Extended tests now pass against the explicit local package boundary
+- Next phase: rerun the end-to-end proof on the now-localized graph runtime
