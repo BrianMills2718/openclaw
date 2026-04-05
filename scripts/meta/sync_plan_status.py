@@ -99,9 +99,9 @@ def parse_index_table(index_path: Path) -> dict[int, dict]:
 
     content = index_path.read_text()
 
-    # Find the Gap Summary table
+    # Find the plan index table (supports both "Gap Summary" and "Active Plans" headings)
     table_match = re.search(
-        r"## Gap Summary\s+\|[^\n]+\n\|[-\s|]+\n((?:\|[^\n]+\n)*)",
+        r"## (?:Gap Summary|Active Plans)\s+\|[^\n]+\n\|[-\s|]+\n((?:\|[^\n]+\n)*)",
         content
     )
 
