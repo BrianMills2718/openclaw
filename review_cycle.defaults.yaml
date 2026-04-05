@@ -23,24 +23,24 @@ agents:
     difficulty: 3
     mcp_servers: []
   review:
-    # Deliberate Plan 07 baseline:
-    # keep the direct gpt-5.2-pro review lane as the default until a
-    # benchmark-backed comparison justifies a different review agent/model.
-    # Uses background mode (5-10 min thinking) via llm_client Responses API polling.
-    # Set agent/model explicitly in an override config to change this policy.
-    agent: direct
-    model: gpt-5.2-pro
-    reasoning_effort: xhigh
-    difficulty: 5
+    # Must be an agent model (codex/claude-code) — the review task writes a JSON
+    # file that downstream tasks depend on. Text-only models (gpt-5.2-pro, gemini)
+    # cannot write files and will fail the file_exists + json_schema validators.
+    agent: codex
+    model: codex
+    difficulty: 4
     mcp_servers: []
   context:
+    # Must be an agent model — context_init and context_update write .md files
+    # to ~/.openclaw/workspace/review-cycles/. Text models cannot satisfy
+    # file_exists validators.
     agent: codex
-    model: gemini/gemini-2.5-flash
+    model: codex
     difficulty: 2
     mcp_servers: []
   synthesis:
     agent: codex
-    model: gemini/gemini-2.5-flash
+    model: codex
     difficulty: 2
     mcp_servers: []
 
