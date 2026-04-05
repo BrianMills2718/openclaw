@@ -173,3 +173,15 @@ If a hard stop condition occurs:
 - Runtime workaround documented: execute `moltbot` worktrees from within
   `~/projects/` so the current shared-import bootstrap remains valid
 - Next phase: review-pass and commit-evidence gating in `run_task.py`
+
+### 2026-04-04T02:00:00Z
+
+- Phase D implementation completed: `run_task.py` now reads graph metadata and
+  applies a semantic review gate based on the final review JSON
+- Phase E implementation completed: planner-generated review-cycle graphs now
+  require commit evidence newer than task start and emit additive report fields
+- Added runtime tests for graph review failure, missing commit failure, graph
+  success with both gates satisfied, and flat/graph report metadata
+- Targeted test suite passed across planner, graph-builder, runtime gate, and
+  bounded recovery coverage
+- Next phase: README truthfulness updates and one real end-to-end proof task

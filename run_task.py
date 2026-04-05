@@ -183,6 +183,9 @@ class TaskSpec:
     source_path: Path
     model: str | None = None  # Explicit model override; baseline requires it for flat tasks
     reasoning_effort: str | None = None  # "low", "medium", "high", "xhigh"
+    task_kind: str | None = None
+    delivery_mode: str | None = None
+    planner_lineage: dict[str, Any] | None = None
 
     @classmethod
     def from_file(cls, path: Path) -> "TaskSpec":
@@ -223,6 +226,9 @@ class TaskSpec:
             source_path=path,
             model=meta.get("model"),
             reasoning_effort=meta.get("reasoning_effort"),
+            task_kind=meta.get("task_kind"),
+            delivery_mode=meta.get("delivery_mode"),
+            planner_lineage=meta.get("planner_lineage"),
         )
 
     def sort_key(self) -> tuple[int, str]:
@@ -544,6 +550,144 @@ def _agent_committed(task: TaskSpec) -> bool:
         return bool(result.stdout.strip())
     except Exception:
         return False
+
+
+def _apply_delivery_contract_metadata(
+    report_payload: dict[str, Any],
+    *,
+    task_kind: str | None = None,
+    delivery_mode: str | None = None,
+    planner_lineage: dict[str, Any] | None = None,
+) -> None:
+    """Attach optional delivery-contract metadata to a report payload."""
+
+    if task_kind:
+        report_payload["task_kind"] = task_kind
+    if delivery_mode:
+        report_payload["delivery_mode"] = delivery_mode
+    if isinstance(planner_lineage, dict) and planner_lineage:
+        report_payload["planner_lineage"] = planner_lineage
+
+
+def _graph_runtime_metadata(task_path: Path) -> dict[str, Any]:
+    """Read top-level graph metadata directly from the YAML artifact."""
+
+    payload = yaml.safe_load(task_path.read_text()) or {}
+    if not isinstance(payload, dict):
+        return {}
+    metadata = payload.get("metadata")
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _parse_iso_datetime(value: str) -> datetime:
+    """Parse a runtime ISO timestamp while tolerating a trailing Z suffix."""
+
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _evaluate_review_gate(review_json_path: Path) -> dict[str, Any]:
+    """Evaluate whether the final review artifact semantically approves the work."""
+
+    gate = {
+        "required": True,
+        "artifact_path": str(review_json_path),
+        "artifact_present": review_json_path.is_file(),
+        "artifact_valid": False,
+        "status": "missing",
+        "passed": False,
+    }
+    if not review_json_path.is_file():
+        gate["reason"] = "final review artifact missing"
+        return gate
+
+    try:
+        payload = json.loads(review_json_path.read_text())
+    except json.JSONDecodeError as exc:
+        gate["status"] = "invalid"
+        gate["reason"] = f"invalid review json: {exc}"
+        return gate
+
+    if not isinstance(payload, dict):
+        gate["status"] = "invalid"
+        gate["reason"] = "review artifact must be a JSON object"
+        return gate
+
+    gate["artifact_valid"] = True
+    gate["status"] = str(payload.get("status", "invalid"))
+    if "summary" in payload:
+        gate["summary"] = payload["summary"]
+    if gate["status"] == "pass":
+        gate["passed"] = True
+        return gate
+
+    gate["reason"] = "review status did not approve the graph"
+    return gate
+
+
+def _review_gate_failure_code(gate: dict[str, Any]) -> str:
+    """Map review-gate failure details to one runtime event code."""
+
+    status = gate.get("status")
+    if status == "missing":
+        return "OPENCLAW_GRAPH_REVIEW_MISSING"
+    if status == "invalid":
+        return "OPENCLAW_GRAPH_REVIEW_INVALID"
+    return "OPENCLAW_GRAPH_REVIEW_FAILED"
+
+
+def _detect_commit_evidence(project_path: Path, started_at: str) -> dict[str, Any]:
+    """Return whether a repo has a commit newer than the task start time."""
+
+    import subprocess
+
+    evidence = {
+        "required": True,
+        "commit_detected": False,
+        "commit_sha": None,
+        "commit_timestamp": None,
+        "passed": False,
+    }
+    try:
+        started_dt = _parse_iso_datetime(started_at)
+    except ValueError as exc:
+        evidence["reason"] = f"invalid started_at timestamp: {exc}"
+        return evidence
+
+    try:
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%H%x00%cI"],
+            cwd=project_path,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except Exception as exc:
+        evidence["reason"] = f"git log failed: {exc}"
+        return evidence
+
+    if result.returncode != 0 or not result.stdout.strip():
+        evidence["reason"] = "no commits available for target repo"
+        return evidence
+
+    commit_sha, _, commit_timestamp = result.stdout.strip().partition("\x00")
+    evidence["commit_sha"] = commit_sha or None
+    evidence["commit_timestamp"] = commit_timestamp or None
+    if not commit_timestamp:
+        evidence["reason"] = "latest commit timestamp missing"
+        return evidence
+
+    try:
+        commit_dt = _parse_iso_datetime(commit_timestamp)
+    except ValueError as exc:
+        evidence["reason"] = f"invalid commit timestamp: {exc}"
+        return evidence
+
+    evidence["commit_detected"] = commit_dt > started_dt
+    evidence["passed"] = evidence["commit_detected"]
+    if not evidence["passed"]:
+        evidence["reason"] = "latest commit is not newer than task start"
+    return evidence
 
 
 def _recoverable_postsuccess_agent_error_reason(
@@ -1221,6 +1365,7 @@ async def _run_graph_task(task_path: Path) -> bool:
     from scripts.meta.task_graph import ExecutionReport, load_graph, run_graph
 
     graph_ref = task_path.stem
+    graph_metadata = _graph_runtime_metadata(task_path)
     report_payload: dict[str, Any] = {
         "report_version": "v1",
         "task_type": "graph",
@@ -1229,6 +1374,12 @@ async def _run_graph_task(task_path: Path) -> bool:
         "status": "running",
         "started_at": datetime.now(timezone.utc).isoformat(),
     }
+    _apply_delivery_contract_metadata(
+        report_payload,
+        task_kind=graph_metadata.get("task_kind"),
+        delivery_mode=graph_metadata.get("delivery_mode"),
+        planner_lineage=graph_metadata.get("planner_lineage"),
+    )
     _record_decision_event(
         report_payload,
         decision_stage="dispatch",
@@ -1326,27 +1477,91 @@ async def _run_graph_task(task_path: Path) -> bool:
             for p in analysis.proposals:
                 log.info("  [%s] %s: %s for %s", p.risk, p.category, p.action, p.task_id)
 
-        # Archive
+        final_status = report.status
         destination = "completed" if report.status == "completed" else "failed"
+        failure_codes: list[str] = [] if report.status == "completed" else ["OPENCLAW_GRAPH_RUN_FAILED"]
+        primary_failure_class = "none" if report.status == "completed" else "reasoning"
+
+        if report.status == "completed" and graph_metadata.get("delivery_mode") == "review_cycle":
+            final_review_path = Path(str(graph_metadata.get("final_review_json", ""))).expanduser()
+            review_gate = _evaluate_review_gate(final_review_path)
+            report_payload["review_gate"] = review_gate
+            if review_gate["passed"]:
+                _record_decision_event(
+                    report_payload,
+                    decision_stage="review_gate",
+                    selected_action="accept_review_pass",
+                    decision_reason="final review artifact approved the graph output",
+                    evidence_refs=[str(final_review_path)],
+                )
+            else:
+                final_status = "failed"
+                destination = "failed"
+                primary_failure_class = "reasoning"
+                failure_codes = [_review_gate_failure_code(review_gate)]
+                _record_decision_event(
+                    report_payload,
+                    decision_stage="review_gate",
+                    selected_action="route_to_failed_review_gate",
+                    decision_reason=review_gate.get("reason", "final review gate failed"),
+                    evidence_refs=failure_codes,
+                )
+
+        commit_required = (
+            final_status == "completed"
+            and graph_metadata.get("delivery_mode") == "review_cycle"
+            and isinstance(graph_metadata.get("planner_lineage"), dict)
+        )
+        if commit_required:
+            commit_evidence = _detect_commit_evidence(
+                Path(str(graph_metadata["target_repo_path"])).expanduser(),
+                report_payload["started_at"],
+            )
+            report_payload["commit_evidence"] = commit_evidence
+            if commit_evidence["passed"]:
+                _record_decision_event(
+                    report_payload,
+                    decision_stage="commit_gate",
+                    selected_action="accept_commit_evidence",
+                    decision_reason="target repo has a commit newer than graph start",
+                    evidence_refs=[commit_evidence["commit_sha"]] if commit_evidence["commit_sha"] else [],
+                )
+            else:
+                final_status = "failed"
+                destination = "failed"
+                primary_failure_class = "reasoning"
+                failure_codes = ["OPENCLAW_GRAPH_COMMIT_MISSING"]
+                _record_decision_event(
+                    report_payload,
+                    decision_stage="commit_gate",
+                    selected_action="route_to_failed_missing_commit",
+                    decision_reason=commit_evidence.get("reason", "commit evidence missing"),
+                    evidence_refs=failure_codes,
+                )
+
+        # Archive
         _move_task(active_path, destination)
-        report_payload["status"] = report.status
+        report_payload["status"] = final_status
         report_payload["destination"] = destination
         _record_decision_event(
             report_payload,
             decision_stage="routing",
             selected_action=f"route_to_{destination}",
-            decision_reason=f"graph execution status={report.status}",
-            evidence_refs=[] if report.status == "completed" else ["OPENCLAW_GRAPH_RUN_FAILED"],
+            decision_reason=(
+                f"graph execution status={report.status}; final routed status={final_status}"
+            ),
+            evidence_refs=[] if final_status == "completed" else failure_codes,
         )
         report_payload["run"] = {
+            "graph_execution_status": report.status,
             "total_cost_usd": report.total_cost_usd,
             "total_duration_s": report.total_duration_s,
             "waves_completed": report.waves_completed,
             "waves_total": report.waves_total,
             "task_results_count": len(report.task_results),
         }
-        report_payload["primary_failure_class"] = "none" if report.status == "completed" else "reasoning"
-        report_payload["failure_event_codes"] = [] if report.status == "completed" else ["OPENCLAW_GRAPH_RUN_FAILED"]
+        report_payload["primary_failure_class"] = primary_failure_class
+        report_payload["failure_event_codes"] = failure_codes
         report_payload["finished_at"] = datetime.now(timezone.utc).isoformat()
         _write_task_report(graph_ref, report_payload)
 
@@ -1355,7 +1570,7 @@ async def _run_graph_task(task_path: Path) -> bool:
                  report.total_cost_usd, report.total_duration_s,
                  report.waves_completed, report.waves_total)
 
-        return report.status == "completed"
+        return final_status == "completed"
 
     except Exception as e:
         import traceback
@@ -1435,6 +1650,12 @@ async def _run_flat_task(task_path: Path, *, parent_trace_id: str | None = None)
         "status": "running",
         "started_at": datetime.now(timezone.utc).isoformat(),
     }
+    _apply_delivery_contract_metadata(
+        report_payload,
+        task_kind=task.task_kind,
+        delivery_mode=task.delivery_mode,
+        planner_lineage=task.planner_lineage,
+    )
     _record_decision_event(
         report_payload,
         decision_stage="dispatch",

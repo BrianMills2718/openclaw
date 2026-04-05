@@ -123,6 +123,24 @@
       },
       "additionalProperties": true
     },
+    "task_kind": {
+      "type": "string"
+    },
+    "delivery_mode": {
+      "type": "string"
+    },
+    "planner_lineage": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "review_gate": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "commit_evidence": {
+      "type": "object",
+      "additionalProperties": true
+    },
     "decision_provenance": {
       "$ref": "#/definitions/decision_provenance"
     },
