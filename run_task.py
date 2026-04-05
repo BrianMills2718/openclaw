@@ -1757,11 +1757,7 @@ def _print_delivery_readiness_audit(audit: dict[str, Any]) -> None:
     """Render one human-readable delivery-readiness audit."""
 
     planner_lineage = audit.get("planner_lineage")
-    planner_task_id = None
-    planner_generated_at = None
-    if isinstance(planner_lineage, dict):
-        planner_task_id = planner_lineage.get("planner_task_id")
-        planner_generated_at = planner_lineage.get("generated_at")
+    planner_task_id, planner_generated_at = _planner_lineage_fields(planner_lineage)
 
     print(f"Ready for execution: {'YES' if audit['ready'] else 'NO'}")
     print(f"Task file: {audit['task_file']}")
@@ -1774,20 +1770,14 @@ def _print_delivery_readiness_audit(audit: dict[str, Any]) -> None:
             f"Graph shape: {audit.get('task_count', 0)} tasks, "
             f"{audit.get('wave_count', 0)} waves"
         )
-        if planner_task_id:
-            print(f"Planner task ID: {planner_task_id}")
-        if planner_generated_at:
-            print(f"Generated at: {planner_generated_at}")
+        _print_planner_lineage(planner_task_id, planner_generated_at)
     else:
         print(f"Task: {audit.get('task_id', 'unknown')} — {audit.get('title', '')}")
         print(f"Agent: {audit.get('agent', 'unknown')}")
         print(f"Model: {audit.get('model') or 'MISSING'}")
         print(f"Project: {audit.get('project', 'unknown')}")
         print(f"Priority: {audit.get('priority', 'unknown')}")
-        if planner_task_id:
-            print(f"Planner task ID: {planner_task_id}")
-        if planner_generated_at:
-            print(f"Generated at: {planner_generated_at}")
+        _print_planner_lineage(planner_task_id, planner_generated_at)
 
     if audit.get("task_kind"):
         print(f"Task kind: {audit['task_kind']}")
@@ -1816,6 +1806,26 @@ def _print_delivery_readiness_audit(audit: dict[str, Any]) -> None:
         print("Failures:")
         for failure in failures:
             print(f"  - {failure.get('error_code', 'UNKNOWN')}: {failure.get('message', '')}")
+
+
+def _planner_lineage_fields(planner_lineage: Any) -> tuple[str | None, str | None]:
+    """Extract planner lineage identifiers when audit metadata provides them."""
+
+    if not isinstance(planner_lineage, dict):
+        return None, None
+    return planner_lineage.get("planner_task_id"), planner_lineage.get("generated_at")
+
+
+def _print_planner_lineage(
+    planner_task_id: str | None,
+    planner_generated_at: str | None,
+) -> None:
+    """Print optional planner lineage fields in the delivery audit output."""
+
+    if planner_task_id:
+        print(f"Planner task ID: {planner_task_id}")
+    if planner_generated_at:
+        print(f"Generated at: {planner_generated_at}")
 
 
 # ---------------------------------------------------------------------------

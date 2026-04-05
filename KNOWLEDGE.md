@@ -189,3 +189,22 @@ Current safe default:
 
 Without those two rules, the planner -> review -> commit path can execute but
 cannot satisfy its own semantic acceptance criteria.
+
+### 2026-04-04 — codex — integration-issue
+
+The local `moltbot/scripts/meta/task_graph.py` bootstrap must not blindly
+prepend canonical repo roots when a higher-priority module path is already
+present on `PYTHONPATH`.
+
+Measured failure:
+- the proof run was started with an llm_client worktree override that contains
+  the Codex transport fallback fix
+- the local task-graph shim prepended `~/projects/llm_client` anyway
+- that shadowed the worktree override and reintroduced the unfixed Codex SDK
+  parser failure on `FileChangeItem.status="in_progress"`
+
+Current safe rule:
+- only prepend fallback repo roots when the target module is not already
+  importable
+- treat explicit `PYTHONPATH`/worktree overrides as intentional operator
+  routing, not something bootstrap code is allowed to clobber

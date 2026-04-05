@@ -321,3 +321,25 @@ If a hard stop condition occurs:
 - Added graph-contract tests that lock down both requirements
 - Next phase: commit the default review/commit policy change, regenerate the
   proof task under the corrected graph defaults, and rerun the full path
+
+### 2026-04-04T13:00:00Z
+
+- The newest planner-generated proof failed in `implement_r1`, but the failure
+  was no longer in planner routing or graph orchestration
+- Measured root cause:
+  `moltbot/scripts/meta/task_graph.py` was prepending the canonical
+  `~/projects/llm_client` path to `sys.path`, which shadowed the explicit
+  llm_client worktree override on `PYTHONPATH`
+- Operational consequence:
+  the proof re-entered the unfixed Codex SDK parser and failed again on
+  `FileChangeItem.status=\"in_progress\"` before the implementation note was
+  written
+- Landed the next fix in the worktree:
+  bootstrap now respects already-importable modules instead of blindly
+  shadowing them, and regression tests lock down that precedence rule
+- Also verified the task-authored audit-output improvement:
+  `run_task.py --audit-delivery-readiness` now prints planner task ID and
+  generated-at timestamp when lineage metadata exists
+- Next phase: commit this checkpoint, rerun the planner-generated proof with
+  the llm_client worktree override active, and verify review pass plus commit
+  evidence on a completed graph

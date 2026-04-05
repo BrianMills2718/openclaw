@@ -21,10 +21,21 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def _prepend_repo_root_if_present(path: Path) -> None:
-    """Prepend a repo root when it exists and is not already importable."""
+def _module_already_importable(module_name: str) -> bool:
+    """Return True when a module is already resolvable on the current sys.path."""
+
+    try:
+        return importlib.util.find_spec(module_name) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def _prepend_repo_root_if_present(path: Path, *, module_name: str | None = None) -> None:
+    """Prepend a repo root when it exists and no higher-priority module is set."""
 
     if not path.is_dir():
+        return
+    if module_name and _module_already_importable(module_name):
         return
     resolved = str(path.resolve())
     if resolved not in sys.path:
@@ -35,7 +46,7 @@ _PROJECTS_ROOT = Path(
     os.environ.get("PROJECTS_ROOT", str(Path.home() / "projects"))
 ).expanduser().resolve()
 for _repo_name in ("llm_client", "agentic_scaffolding"):
-    _prepend_repo_root_if_present(_PROJECTS_ROOT / _repo_name)
+    _prepend_repo_root_if_present(_PROJECTS_ROOT / _repo_name, module_name=_repo_name)
 _PROJECT_META_TASK_GRAPH = (
     Path(os.environ.get("PROJECT_META_ROOT", str(_PROJECTS_ROOT / "project-meta")))
     .expanduser()

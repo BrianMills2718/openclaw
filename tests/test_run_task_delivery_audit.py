@@ -390,3 +390,55 @@ def test_main_audit_delivery_readiness_exits_zero_when_ready(
 
     assert excinfo.value.code == 0
     assert printed and printed[0]["task_file"] == str(task_path)
+
+
+def test_main_audit_delivery_readiness_prints_planner_lineage(
+    monkeypatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """CLI audit output should include planner lineage fields when present."""
+
+    task_path = _flat_task_file(tmp_path)
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["run_task.py", "--audit-delivery-readiness", str(task_path)],
+    )
+    monkeypatch.setattr(
+        run_task,
+        "_audit_delivery_readiness",
+        lambda path: {
+            "ready": True,
+            "task_file": str(path),
+            "task_type": "flat",
+            "task_id": "planner-2026-04-04-docs-refresh",
+            "title": "Refresh docs",
+            "agent": "codex",
+            "model": "codex",
+            "project": str(tmp_path),
+            "priority": "medium",
+            "planner_lineage": {
+                "planner_task_id": "planner-2026-04-04-docs-refresh",
+                "generated_at": "2026-04-04T10:00:00+00:00",
+            },
+            "task_kind": "docs_only",
+            "delivery_mode": "flat",
+            "budget_check": {"passed": True, "spent_today_usd": 0.0, "daily_budget_usd": 20.0},
+            "preflight": {"passed": True, "checks": [], "failures": [], "failure_event_codes": []},
+        },
+    )
+    monkeypatch.setattr(
+        run_task.asyncio,
+        "run",
+        lambda coroutine: (_ for _ in ()).throw(AssertionError("task execution should not start in audit mode")),
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        run_task.main()
+
+    output = capsys.readouterr().out
+    assert excinfo.value.code == 0
+    assert "Planner task ID: planner-2026-04-04-docs-refresh" in output
+    assert "Generated at: 2026-04-04T10:00:00+00:00" in output
