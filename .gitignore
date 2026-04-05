@@ -19,3 +19,7 @@ Thumbs.db
 *.tmp
 .cache/
 .env.local
+
+# Python runtime artifacts
+__pycache__/
+*.pyc
