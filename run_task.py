@@ -56,16 +56,16 @@ def _bootstrap_shared_import_roots() -> None:
     projects_root = Path(
         os.environ.get("PROJECTS_ROOT", str(Path.home() / "projects"))
     ).expanduser().resolve()
-    for repo_name in ("llm_client", "agentic_scaffolding"):
+    for repo_name in ("llm_client", "agentic_scaffolding", "project-meta"):
         _prepend_repo_root_if_present(projects_root / repo_name)
+    # scripts/meta helpers (analyzer, git_utils, etc.) use flat imports from their own dir
+    _prepend_repo_root_if_present(projects_root / "project-meta" / "scripts" / "meta")
 
 
 _bootstrap_shared_import_roots()
 
 # Ensure sibling modules (spawn_extract) are importable
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-# Ensure project-meta root is importable (for scripts.meta.task_graph, scripts.meta.analyzer)
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 TASKS_DIR = Path(os.environ.get("OPENCLAW_TASKS_DIR", Path.home() / ".openclaw" / "tasks"))
 COST_LOG = Path(os.environ.get("OPENCLAW_COST_LOG", Path.home() / ".openclaw" / "cost_log.jsonl"))
