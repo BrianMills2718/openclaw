@@ -8,11 +8,16 @@ Track all implementation work here.
 |---|------|----------|--------|--------|
 | 1 | [Example Plan](01_example.md) | Medium | 📋 Planned | - |
 | 2 | [End-to-End Planner -> Review -> Commit Flow](02_end_to_end_planner_review_commit_flow.md) | High | 🚧 In Progress | - |
+| 3 | [Graph Report Task-Result Observability](03_graph_report_task_result_observability.md) | High | 📋 Planned | Merge of Plan #2 branches |
 
 ## Active Execution Tracker
 
 - [24-Hour Runtime Sprint](24h_runtime_execution_sprint_2026_04_04.md)
 - [24-Hour Runtime Sprint](24h_runtime_execution_sprint_2026_04_05.md)
+
+## Rollout Checklists
+
+- [Post-Merge Rollout Checklist](post_merge_rollout_checklist_2026_04_05.md)
 
 ## Status Key
 
