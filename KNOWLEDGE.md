@@ -226,3 +226,22 @@ Current safe rule:
   must respect explicit earlier repo roots on `sys.path`
 - if a caller wants a worktree override, bootstrap code may fill missing roots
   but must not reorder that override behind canonical repos
+
+### 2026-04-04 — codex — bug-pattern
+
+For this ecosystem layout, a parent directory that merely contains a repo named
+`llm_client/` does not count as already exposing the `llm_client` package
+facade.
+
+Measured failure:
+- `sys.path` contained a parent directory like `~/projects`
+- bootstrap helpers saw `~/projects/llm_client` and assumed the module root was
+  already present
+- but `from llm_client import acall_llm` still failed because the real facade is
+  `~/projects/llm_client/llm_client/__init__.py`
+
+Current safe rule:
+- only treat a path as already satisfying the bootstrap requirement when it
+  exposes `module/__init__.py` or `module.py`
+- repo-root presence alone is not enough in a repo-that-contains-a-package
+  layout

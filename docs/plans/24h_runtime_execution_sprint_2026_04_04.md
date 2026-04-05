@@ -365,3 +365,31 @@ If a hard stop condition occurs:
 - Next phase: commit this second bootstrap fix, rerun the planner-generated
   proof from a clean queue, and inspect whether `implement_r1` finally clears
   wave 1 under the llm_client worktree override
+
+### 2026-04-04T15:00:00Z
+
+- A deeper review-cycle run exposed that the previous bootstrap helper was
+  still semantically wrong even after the worktree precedence fix
+- Real blocker:
+  the helper treated parent directories like `~/projects` as if they already
+  exposed the `llm_client` package facade, because they contain a repo named
+  `llm_client/`
+- That is false in the actual ecosystem layout:
+  `~/projects/llm_client` is a repo root, but the importable package facade is
+  `~/projects/llm_client/llm_client/__init__.py`
+- Fixed both bootstrap surfaces so a path only counts as an existing module
+  root when it exposes `module/__init__.py` or `module.py`
+- Added the exact missing regression coverage:
+  parent-directory namespace-package false positives for both `run_task.py`
+  and `scripts/meta/task_graph.py`
+- Verified the review-requested suite:
+  `pytest -q tests/test_runtime_bootstrap_imports.py tests/test_run_task_delivery_audit.py tests/test_run_task_reports.py tests/test_task_planner_delivery_modes.py`
+  now passes
+- Proof status after debug replay:
+  - implementation lane can complete under explicit Codex CLI transport
+  - review lane can complete and emits `review.json`
+  - synthesized final decision currently marks the branch `needs_changes`
+    because of the namespace-package bootstrap bug above, now fixed in source
+- Next phase: commit the namespace bootstrap fix, rerun the planner-generated
+  graph under the same CLI-backed environment, and verify the final review gate
+  flips from `needs_changes` to `pass`

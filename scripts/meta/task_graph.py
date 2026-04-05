@@ -31,7 +31,8 @@ def _module_root_already_present(module_name: str) -> bool:
             continue
         if not root.exists() or not root.is_dir():
             continue
-        if (root / module_name).is_dir() or (root / f"{module_name}.py").is_file():
+        package_dir = root / module_name
+        if (package_dir / "__init__.py").is_file() or (root / f"{module_name}.py").is_file():
             return True
     return False
 
