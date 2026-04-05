@@ -296,3 +296,29 @@ Verification after the corrective patch:
 
 - `python -m pytest -q tests/test_run_task_reports.py tests/test_run_task_review_gate.py`
 - `python -m pytest -q tests/test_runtime_bootstrap_imports.py tests/test_run_task_delivery_audit.py tests/test_run_task_reports.py tests/test_task_planner_delivery_modes.py`
+
+## 2026-04-05 07:17 PT - Fresh Plan #3 Proof Completed
+
+Phase 6 is complete.
+
+Successful proof artifact:
+
+- `/tmp/openclaw-proof-plan3-task-wave-live/reports/planner-2026-04-05-add-failing-task-wave-to-report-triage_20260405T141713Z.json`
+
+Truth conditions verified from the final report:
+
+- `status = completed`
+- `destination = completed`
+- `review_gate.passed = true`
+- `commit_evidence.passed = true`
+- `task_results` present with three bounded task summaries
+
+Proof-specific code landed by the reviewed lane:
+
+- `242b0ed` `[Plan #3] Add failing task wave triage to graph reports`
+- `647c13d` `[Plan #3] Add round 1 failing-wave implementation note`
+
+Post-proof branch verification:
+
+- `python -m pytest -q tests/test_run_task_reports.py tests/test_run_task_review_gate.py`
+- `python -m pytest -q tests/test_runtime_bootstrap_imports.py tests/test_run_task_delivery_audit.py tests/test_run_task_reports.py tests/test_task_planner_delivery_modes.py`
