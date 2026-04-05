@@ -266,3 +266,23 @@ Current safe rule:
 - once the shim has loaded the intended llm_client module, later analyzer
   imports will reuse that same module instead of reintroducing the canonical
   repo
+
+### 2026-04-04 — codex — workaround
+
+For the current review-cycle runtime, defaulting Codex transport to `auto` is
+not yet truthful enough under `LLM_CLIENT_TIMEOUT_POLICY=ban`.
+
+Measured repro:
+- runner started with llm_client worktree override and no explicit
+  `LLM_CLIENT_CODEX_TRANSPORT`
+- runtime defaulted to `auto`
+- live logs showed `CODEX_TRANSPORT_FALLBACK[sdk->cli]`, proving the SDK lane
+  still started first
+- the fresh graph still failed wave 1 with `Task timed out after 300s` before
+  any validator-backed output existed
+
+Current safe rule:
+- default `run_task.py` to explicit `LLM_CLIENT_CODEX_TRANSPORT=cli`
+- preserve explicit operator overrides
+- revisit `auto` only after the SDK-first timeout behavior is fixed and proven
+  on the real review-cycle graph path

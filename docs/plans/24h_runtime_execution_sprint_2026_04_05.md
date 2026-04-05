@@ -226,3 +226,27 @@ Remaining gaps before declaring the overnight slice fully closed:
   replayed historical proof id
 - decide whether the operator-truthful default should remain `auto` or be
   hardened to explicit `cli` for review-cycle runs when `TIMEOUT_POLICY=ban`
+
+## 2026-04-04 21:20 PT - Auto Default Proven Unsafe For Current Runtime
+
+The fresh graph-id proof answered the transport-policy question.
+
+Command:
+
+- `PYTHONPATH=<llm_client-worktree>:$PYTHONPATH OPENCLAW_DEBUG_RUNTIME_PROVENANCE=<path> OPENCLAW_TASKS_DIR=/tmp/openclaw-proof-auto-fresh python run_task.py <fresh-graph>`
+
+Observed behavior:
+
+- runtime defaulted `LLM_CLIENT_CODEX_TRANSPORT=auto`
+- provenance confirmed `codex_transport_resolved = auto`
+- live execution logged `CODEX_TRANSPORT_FALLBACK[sdk->cli]`
+- despite that fallback, wave 1 still failed with `Task timed out after 300s`
+- report status was only `partial`; no fresh implementation artifact existed to
+  recover from validators
+
+Decision:
+
+- change the autonomous default in `run_task.py` from `auto` to explicit `cli`
+- keep explicit operator overrides honored
+- rerun the same fresh graph without any transport override to prove the new
+  default completes truthfully

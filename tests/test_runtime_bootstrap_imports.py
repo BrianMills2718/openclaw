@@ -101,14 +101,14 @@ def test_graph_runtime_modules_import_task_graph_before_analyzer_preserves_overr
                 sys.modules[name] = module
 
 
-def test_runtime_env_defaults_codex_transport_to_auto(monkeypatch) -> None:
-    """The runtime should default Codex agent tasks to auto transport."""
+def test_runtime_env_defaults_codex_transport_to_cli(monkeypatch) -> None:
+    """The runtime should default Codex agent tasks to explicit CLI transport."""
 
     monkeypatch.delenv("LLM_CLIENT_CODEX_TRANSPORT", raising=False)
 
     run_task._bootstrap_runtime_env_defaults()
 
-    assert os.environ["LLM_CLIENT_CODEX_TRANSPORT"] == "auto"
+    assert os.environ["LLM_CLIENT_CODEX_TRANSPORT"] == "cli"
 
 
 def test_runtime_env_defaults_preserve_explicit_codex_transport(monkeypatch) -> None:
