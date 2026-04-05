@@ -8,6 +8,8 @@ Track all implementation work here.
 |---|------|----------|--------|--------|
 | 1 | [Example Plan](01_example.md) | Medium | Planned | - |
 | 2 | [End-to-End Planner -> Review -> Commit Flow](02_end_to_end_planner_review_commit_flow.md) | High | ✅ Complete | - |
+| 3 | [Phase 6.3 Autonomous Daily Cycle](03_phase63_autonomous_daily_cycle.md) | High | 📋 Planned | 4 |
+| 4 | [run_task.py Observability and Cost Tracking](04_run_task_observability.md) | Medium | 📋 Planned | - |
 
 ## Status Key
 

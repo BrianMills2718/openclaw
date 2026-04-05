@@ -1,3 +1,10 @@
+# === OPENCLAW OPERATIONAL TARGETS ===
+
+.PHONY: review-gate-log
+
+review-gate-log:  ## Show review-cycle gate outcomes (DAYS=30)
+	@python scripts/review_gate_log.py --days $(or $(DAYS),30)
+
 # === META-PROCESS TARGETS ===
 # Added by meta-process install.sh
 
