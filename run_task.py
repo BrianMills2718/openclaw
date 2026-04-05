@@ -6,7 +6,7 @@ validates results, and archives to completed/ or failed/.
 
 Supports two formats:
 - .md files: Flat tasks with YAML frontmatter (original format)
-- .yaml/.yml files: Task graph DAGs via llm_client.task_graph
+- .yaml/.yml files: Task graph DAGs via the local ``task_graph`` runtime module
 
 Usage:
     run_task.py [task_file]          # Run a specific task
@@ -56,10 +56,8 @@ def _bootstrap_shared_import_roots() -> None:
     projects_root = Path(
         os.environ.get("PROJECTS_ROOT", str(Path.home() / "projects"))
     ).expanduser().resolve()
-    for repo_name in ("llm_client", "agentic_scaffolding", "project-meta"):
+    for repo_name in ("llm_client", "agentic_scaffolding"):
         _prepend_repo_root_if_present(projects_root / repo_name)
-    # scripts/meta helpers (analyzer, git_utils, etc.) use flat imports from their own dir
-    _prepend_repo_root_if_present(projects_root / "project-meta" / "scripts" / "meta")
 
 
 _bootstrap_shared_import_roots()
@@ -1357,9 +1355,9 @@ def _run_supervisor_loop(
 
 
 async def _run_graph_task(task_path: Path) -> bool:
-    """Execute a YAML task graph via llm_client.task_graph."""
-    from scripts.meta.analyzer import analyze_run
-    from scripts.meta.task_graph import ExecutionReport, load_graph, run_graph
+    """Execute a YAML task graph via the local runtime cluster."""
+    from analyzer import analyze_run
+    from task_graph import ExecutionReport, load_graph, run_graph
 
     graph_ref = task_path.stem
     report_payload: dict[str, Any] = {
@@ -1578,7 +1576,7 @@ async def _run_graph_task(task_path: Path) -> bool:
 
 def _dry_run_graph(task_path: Path) -> None:
     """Show what a task graph would do without executing."""
-    from scripts.meta.task_graph import load_graph, run_graph
+    from task_graph import load_graph, run_graph
 
     graph = load_graph(task_path)
     mcp_configs = _load_mcp_registry()
@@ -2050,7 +2048,7 @@ def main() -> None:
             print(f"  [{t.priority}] {t.id}: {t.title} (agent={t.agent}, project={t.project})")
         for g in graph_files:
             try:
-                from scripts.meta.task_graph import load_graph
+                from task_graph import load_graph
                 graph = load_graph(g)
                 print(f"  [graph] {graph.meta.id}: {graph.meta.description} "
                       f"({len(graph.tasks)} tasks, {len(graph.waves)} waves)")

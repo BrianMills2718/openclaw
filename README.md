@@ -116,17 +116,17 @@ success_criteria:
 This contract is intended to be machine-readable and explicit, so OpenClaw runs can
 be governed by objective-level criteria instead of ad hoc assumptions.
 
-Ownership boundary (2026-03-31):
-- Status: stable in project-meta, pending extraction to own repo
-- Planned target: `agent-task-supervisor` (see vision/ROADMAP.md Phase 3.4)
-- Current couplings preventing extraction:
-  - imports `scripts.meta.task_graph` and `scripts.meta.analyzer` (project-meta internal)
-  - imports `agentic_scaffolding` (external shared infra, pip-installable)
-  - imports `llm_client` (external shared infra, pip-installable)
-- Extraction prerequisite: `scripts.meta.task_graph` must either move with
-  openclaw or be published as a standalone package
-- No new orchestration features should be added here until extraction decision
-  is made
+Ownership boundary (2026-04-04):
+- Status: active canonical home for the runtime cluster (`run_task.py`,
+  `task_graph.py`, `analyzer.py`, `git_utils.py`)
+- `moltbot` owns orchestration/runtime execution behavior
+- Shared infra dependencies remain external and pip-installable:
+  - `agentic_scaffolding`
+  - `llm_client`
+- `project-meta` is no longer part of the hot runtime path for task-graph
+  execution
+- Future extraction to a dedicated runtime repo remains possible, but the
+  current canonical implementation lives here
 
 Sync note:
 - Runtime path: `$HOME/.openclaw/bin/run_task.py`
