@@ -21,13 +21,19 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def _module_already_importable(module_name: str) -> bool:
-    """Return True when a module is already resolvable on the current sys.path."""
+def _module_root_already_present(module_name: str) -> bool:
+    """Return True when an earlier sys.path entry already exposes the module root."""
 
-    try:
-        return importlib.util.find_spec(module_name) is not None
-    except (ImportError, ValueError):
-        return False
+    for entry in sys.path:
+        try:
+            root = Path(entry).expanduser().resolve()
+        except OSError:
+            continue
+        if not root.exists() or not root.is_dir():
+            continue
+        if (root / module_name).is_dir() or (root / f"{module_name}.py").is_file():
+            return True
+    return False
 
 
 def _prepend_repo_root_if_present(path: Path, *, module_name: str | None = None) -> None:
@@ -35,7 +41,7 @@ def _prepend_repo_root_if_present(path: Path, *, module_name: str | None = None)
 
     if not path.is_dir():
         return
-    if module_name and _module_already_importable(module_name):
+    if module_name and _module_root_already_present(module_name):
         return
     resolved = str(path.resolve())
     if resolved not in sys.path:

@@ -208,3 +208,21 @@ Current safe rule:
   importable
 - treat explicit `PYTHONPATH`/worktree overrides as intentional operator
   routing, not something bootstrap code is allowed to clobber
+
+### 2026-04-04 — codex — integration-issue
+
+The same import-precedence rule also applies in `run_task.py` before any graph
+loading begins. Fixing only the local task-graph shim is insufficient.
+
+Measured failure:
+- the proof run still logged the old Codex SDK parse error after the shim fix
+- llm_client observability showed the runner was still executing against the
+  unfixed import path
+- root cause: `run_task.py` prepended canonical `~/projects/llm_client` before
+  importing shared modules, so the worktree override never reached `acall_llm`
+
+Current safe rule:
+- both bootstrap surfaces (`run_task.py` and `scripts/meta/task_graph.py`)
+  must respect explicit earlier repo roots on `sys.path`
+- if a caller wants a worktree override, bootstrap code may fill missing roots
+  but must not reorder that override behind canonical repos

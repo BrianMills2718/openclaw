@@ -288,6 +288,35 @@ def test_print_delivery_readiness_audit_for_flat_omits_missing_planner_lineage(
     assert "Generated at:" not in output
 
 
+def test_print_delivery_readiness_audit_for_flat_falls_back_to_task_metadata(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Planner-shaped flat tasks should still surface lineage from task metadata."""
+
+    run_task._print_delivery_readiness_audit(
+        {
+            "ready": True,
+            "task_file": "/tmp/planner-2026-04-04-docs-refresh.md",
+            "task_type": "flat",
+            "task_id": "planner-2026-04-04-docs-refresh",
+            "title": "Refresh docs",
+            "agent": "codex",
+            "model": "codex",
+            "project": "/tmp/repo",
+            "priority": "medium",
+            "created": "2026-04-04T09:30:00+00:00",
+            "task_kind": "docs_only",
+            "delivery_mode": "flat",
+            "budget_check": {"passed": True, "spent_today_usd": 0.25, "daily_budget_usd": 20.0},
+            "preflight": {"passed": True, "checks": [], "failures": [], "failure_event_codes": []},
+        }
+    )
+
+    output = capsys.readouterr().out
+    assert "Planner task ID: planner-2026-04-04-docs-refresh" in output
+    assert "Generated at: 2026-04-04T09:30:00+00:00" in output
+
+
 def test_print_delivery_readiness_audit_for_graph_omits_missing_planner_lineage(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

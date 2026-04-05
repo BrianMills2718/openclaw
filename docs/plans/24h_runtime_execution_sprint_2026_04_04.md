@@ -343,3 +343,25 @@ If a hard stop condition occurs:
 - Next phase: commit this checkpoint, rerun the planner-generated proof with
   the llm_client worktree override active, and verify review pass plus commit
   evidence on a completed graph
+
+### 2026-04-04T14:00:00Z
+
+- The previous fix was necessary but not sufficient: the same import-shadowing
+  bug also existed in `run_task.py` itself, earlier than the local
+  `scripts.meta.task_graph` import path
+- Measured consequence:
+  even with `PYTHONPATH=/home/brian/projects/llm_client_worktrees/codex-transport-fallback`,
+  the runner still prepended canonical `~/projects/llm_client`, so the proof
+  kept hitting the old Codex SDK parser and failing on
+  `FileChangeItem.status=\"in_progress\"`
+- Landed the next fix:
+  both runner bootstrap surfaces now respect explicit earlier repo roots on
+  `sys.path` instead of blindly prepending canonical repos
+- Added regression coverage for both surfaces:
+  - `run_task` bootstrap respects existing module roots and still prepends when
+    truly missing
+  - local task-graph shim follows the same rule
+  - flat audit output now also falls back to planner-shaped task metadata
+- Next phase: commit this second bootstrap fix, rerun the planner-generated
+  proof from a clean queue, and inspect whether `implement_r1` finally clears
+  wave 1 under the llm_client worktree override

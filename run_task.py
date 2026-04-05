@@ -34,10 +34,27 @@ from typing import Any
 import yaml
 
 
-def _prepend_repo_root_if_present(path: Path) -> None:
-    """Prepend a repo root to sys.path when it exists and is not already present."""
+def _module_root_already_present(module_name: str) -> bool:
+    """Return True when an earlier sys.path entry already exposes the module root."""
+
+    for entry in sys.path:
+        try:
+            root = Path(entry).expanduser().resolve()
+        except OSError:
+            continue
+        if not root.exists() or not root.is_dir():
+            continue
+        if (root / module_name).is_dir() or (root / f"{module_name}.py").is_file():
+            return True
+    return False
+
+
+def _prepend_repo_root_if_present(path: Path, *, module_name: str | None = None) -> None:
+    """Prepend a repo root to sys.path when no higher-priority module is set."""
 
     if not path.is_dir():
+        return
+    if module_name and _module_root_already_present(module_name):
         return
     resolved = str(path.resolve())
     if resolved not in sys.path:
@@ -58,7 +75,7 @@ def _bootstrap_shared_import_roots() -> None:
         os.environ.get("PROJECTS_ROOT", str(Path.home() / "projects"))
     ).expanduser().resolve()
     for repo_name in ("llm_client", "agentic_scaffolding"):
-        _prepend_repo_root_if_present(projects_root / repo_name)
+        _prepend_repo_root_if_present(projects_root / repo_name, module_name=repo_name)
     project_meta_root = Path(
         os.environ.get("PROJECT_META_ROOT", str(projects_root / "project-meta"))
     ).expanduser().resolve()
@@ -1729,6 +1746,7 @@ def _audit_delivery_readiness(task_path: Path) -> dict[str, Any]:
             audit["model"] = task.model
             audit["project"] = task.project
             audit["priority"] = task.priority
+            audit["created"] = task.created
             _apply_delivery_contract_metadata(
                 audit,
                 task_kind=task.task_kind,
@@ -1756,8 +1774,7 @@ def _audit_delivery_readiness(task_path: Path) -> dict[str, Any]:
 def _print_delivery_readiness_audit(audit: dict[str, Any]) -> None:
     """Render one human-readable delivery-readiness audit."""
 
-    planner_lineage = audit.get("planner_lineage")
-    planner_task_id, planner_generated_at = _planner_lineage_fields(planner_lineage)
+    planner_task_id, planner_generated_at = _planner_lineage_fields(audit)
 
     print(f"Ready for execution: {'YES' if audit['ready'] else 'NO'}")
     print(f"Task file: {audit['task_file']}")
@@ -1808,12 +1825,31 @@ def _print_delivery_readiness_audit(audit: dict[str, Any]) -> None:
             print(f"  - {failure.get('error_code', 'UNKNOWN')}: {failure.get('message', '')}")
 
 
-def _planner_lineage_fields(planner_lineage: Any) -> tuple[str | None, str | None]:
-    """Extract planner lineage identifiers when audit metadata provides them."""
+def _planner_lineage_fields(audit: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Extract planner lineage identifiers from explicit metadata or flat-task fallbacks."""
 
-    if not isinstance(planner_lineage, dict):
-        return None, None
-    return planner_lineage.get("planner_task_id"), planner_lineage.get("generated_at")
+    planner_task_id: str | None = None
+    planner_generated_at: str | None = None
+    planner_lineage = audit.get("planner_lineage")
+    if isinstance(planner_lineage, dict):
+        raw_task_id = planner_lineage.get("planner_task_id")
+        raw_generated_at = planner_lineage.get("generated_at")
+        if isinstance(raw_task_id, str) and raw_task_id:
+            planner_task_id = raw_task_id
+        if isinstance(raw_generated_at, str) and raw_generated_at:
+            planner_generated_at = raw_generated_at
+
+    if not planner_task_id:
+        fallback_id = audit.get("task_id") if audit.get("task_type") == "flat" else audit.get("graph_id")
+        if isinstance(fallback_id, str) and fallback_id.startswith("planner-"):
+            planner_task_id = fallback_id
+
+    if not planner_generated_at and audit.get("task_type") == "flat":
+        fallback_created = audit.get("created")
+        if isinstance(fallback_created, str) and fallback_created:
+            planner_generated_at = fallback_created
+
+    return planner_task_id, planner_generated_at
 
 
 def _print_planner_lineage(
