@@ -114,11 +114,11 @@ def test_runtime_env_defaults_codex_transport_to_cli(monkeypatch) -> None:
 def test_runtime_env_defaults_preserve_explicit_codex_transport(monkeypatch) -> None:
     """Explicit operator transport settings should win over runtime defaults."""
 
-    monkeypatch.setenv("LLM_CLIENT_CODEX_TRANSPORT", "cli")
+    monkeypatch.setenv("LLM_CLIENT_CODEX_TRANSPORT", "auto")
 
     run_task._bootstrap_runtime_env_defaults()
 
-    assert os.environ["LLM_CLIENT_CODEX_TRANSPORT"] == "cli"
+    assert os.environ["LLM_CLIENT_CODEX_TRANSPORT"] == "auto"
 
 
 def test_run_task_bootstrap_respects_existing_module_resolution(tmp_path: Path) -> None:
