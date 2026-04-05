@@ -27,10 +27,12 @@ Runtime behavior (current):
   overrides it with an explicit config file.
 - Graph tasks run deterministic preflight checks before execution (`non-empty graph`, `waves`, `MCP server configs`).
 - Review-cycle Codex tasks default to explicit CLI transport during runtime
-  bootstrap. In `run_task.py`, `_bootstrap_runtime_env_defaults()` applies
-  `LLM_CLIENT_CODEX_TRANSPORT=cli` because the current `auto` path can still
-  spend most of a graph task in the SDK lane before falling back.
-- That bootstrap default uses `os.environ.setdefault(...)`, so an
+  bootstrap. In `run_task.py`, `_bootstrap_runtime_env_defaults()` calls
+  `os.environ.setdefault("LLM_CLIENT_CODEX_TRANSPORT", "cli")` because the
+  current `auto` path can still spend most of a graph task in the SDK lane
+  before falling back and expose long review-cycle steps to the 300s task
+  timeout.
+- Because that bootstrap path uses `os.environ.setdefault(...)`, an
   operator-set `LLM_CLIENT_CODEX_TRANSPORT` still overrides the default
   instead of being overwritten.
 - Every run emits one structured JSON report to `OPENCLAW_REPORTS_DIR` (default: `$HOME/.openclaw/tasks/reports`).
