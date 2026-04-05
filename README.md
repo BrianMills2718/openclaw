@@ -25,13 +25,14 @@ Runtime behavior (current):
   default review lane stays `agent: direct` with `model: gpt-5.2-pro` unless a
   caller overrides it with an explicit config file.
 - Graph tasks run deterministic preflight checks before execution (`non-empty graph`, `waves`, `MCP server configs`).
-- Review-cycle Codex execution now defaults `LLM_CLIENT_CODEX_TRANSPORT=cli`
-  inside `run_task.py` because the current `auto` path can still burn most of a
-  task in the SDK lane before falling back, which is not truthful enough under
-  `LLM_CLIENT_TIMEOUT_POLICY=ban`.
-- Explicit operator transport settings still win; if a caller sets
-  `LLM_CLIENT_CODEX_TRANSPORT` in the environment, `run_task.py` preserves that
-  value instead of overwriting it.
+- Review-cycle Codex tasks now default to explicit
+  `LLM_CLIENT_CODEX_TRANSPORT=cli` in `run_task.py` because the current `auto`
+  path can still burn most of a graph task in the SDK lane before falling
+  back, which is not truthful enough under `LLM_CLIENT_TIMEOUT_POLICY=ban`.
+- That default follows the runtime bootstrap policy in `run_task.py`: it uses
+  `os.environ.setdefault(...)`, so an operator-set
+  `LLM_CLIENT_CODEX_TRANSPORT` still overrides the default instead of being
+  overwritten.
 - Every run emits one structured JSON report to `OPENCLAW_REPORTS_DIR` (default: `$HOME/.openclaw/tasks/reports`).
 - Reports include `primary_failure_class` and `failure_event_codes`.
 - Reports include `decision_provenance` (schema `v1`) for dispatch/preflight/execution/routing/error decisions.
