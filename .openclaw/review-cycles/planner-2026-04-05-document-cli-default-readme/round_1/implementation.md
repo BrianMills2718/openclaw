@@ -1,13 +1,12 @@
-# Round 1 Implementation Note
+## Round 1 Implementation
 
 - Changed files:
   - `README.md`
   - `.openclaw/review-cycles/planner-2026-04-05-document-cli-default-readme/round_1/implementation.md`
 - Tests run:
-  - `pytest -q tests/test_runtime_bootstrap_imports.py -k 'runtime_env_defaults_codex_transport_to_cli or runtime_env_defaults_preserve_explicit_codex_transport'` (`2 passed, 10 deselected`)
-  - `pytest -q tests/test_runtime_bootstrap_imports.py` (`6 failed, 6 passed` in this shell because an existing `PYTHONPATH`/worktree override changes broader bootstrap import-precedence assumptions)
+  - `pytest -q tests/test_runtime_bootstrap_imports.py` from the ambient shell environment; failed because the session `PYTHONPATH` already pointed at `/home/brian/projects/llm_client_worktrees/codex-transport-fallback`, which changes the bootstrap path-order assumptions under test.
+  - `PYTHONPATH=. pytest -q tests/test_runtime_bootstrap_imports.py` — passed (`12 passed`).
 - Residual risks:
-  - The README now matches `_bootstrap_runtime_env_defaults()` as implemented today, but it will drift again if the bootstrap policy changes without a corresponding doc update.
-  - The broader bootstrap test module is environment-sensitive when explicit import overrides are already present in the shell.
-- Implementation commit SHA:
-  - `502c957`
+  - The README change is documentation-only, but the bootstrap test file remains sensitive to external `PYTHONPATH` overrides in the caller environment. The verified result above reflects the repo-local runtime contract without that unrelated override.
+- Commit sha:
+  - `b91e28c30628e0641f3b22bfcdaaf29e0a154a91`
