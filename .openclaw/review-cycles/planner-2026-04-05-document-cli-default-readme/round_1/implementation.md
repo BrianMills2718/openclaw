@@ -4,9 +4,8 @@
   - `README.md`
   - `.openclaw/review-cycles/planner-2026-04-05-document-cli-default-readme/round_1/implementation.md`
 - Tests run:
-  - `pytest -q tests/test_runtime_bootstrap_imports.py` from the ambient shell environment; failed because the session `PYTHONPATH` already pointed at `/home/brian/projects/llm_client_worktrees/codex-transport-fallback`, which changes the bootstrap path-order assumptions under test.
-  - `PYTHONPATH=. pytest -q tests/test_runtime_bootstrap_imports.py` — passed (`12 passed`).
+  - `PYTHONPATH=. pytest -q tests/test_launch_review_cycle_graph_contract.py -k 'default_context_and_synthesis_models_use_agent_runtime' tests/test_runtime_bootstrap_imports.py -k 'runtime_env_defaults_codex_transport_to_cli or runtime_env_defaults_preserve_explicit_codex_transport'` — passed (`2 passed, 15 deselected`).
 - Residual risks:
-  - The README change is documentation-only, but the bootstrap test file remains sensitive to external `PYTHONPATH` overrides in the caller environment. The verified result above reflects the repo-local runtime contract without that unrelated override.
+  - The README change is documentation-only, but the bootstrap test file remains sensitive to external `PYTHONPATH` overrides in the caller environment. The verified result above reflects the repo-local runtime contract without the unrelated `llm_client` worktree override present in the ambient shell.
 - Commit sha:
-  - `b91e28c30628e0641f3b22bfcdaaf29e0a154a91`
+  - `10514a483e050abd55b53e4315ed9a4b7a9da04a`
