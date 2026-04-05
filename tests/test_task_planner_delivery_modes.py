@@ -181,6 +181,6 @@ def test_write_review_cycle_task_uses_planner_selected_agent_for_impl_and_synthe
 
     payload = yaml.safe_load(path.read_text())
     assert payload["tasks"]["implement_r1"]["agent"] == "claude-code"
-    assert payload["tasks"]["implement_r1"]["model"] == "claude-3-5-sonnet-20240620"
+    assert payload["tasks"]["implement_r1"]["model"] == "claude-code"
     assert payload["tasks"]["synthesize"]["agent"] == "claude-code"
-    assert payload["tasks"]["synthesize"]["model"] == "claude-3-5-sonnet-20240620"
+    assert payload["tasks"]["synthesize"]["model"] == "claude-code"

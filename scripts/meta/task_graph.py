@@ -98,6 +98,7 @@ ExecutionReport.model_rebuild(
     force=True,
     _types_namespace={"Any": Any, "TaskResult": TaskResult},
 )
+ExperimentRecord.model_rebuild(force=True, _types_namespace={"Any": Any})
 
 
 def _recover_postsuccess_failure(

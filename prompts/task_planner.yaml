@@ -77,7 +77,9 @@ messages:
       - priority: high | medium | low
       - agent: codex | claude-code
       - project: full path to project directory
-      - model: exact model identifier to execute this task (required)
+      - model: for review_cycle tasks use the workspace-agent model alias matching
+        the agent (`codex` or `claude-code`); for flat tasks use the exact model
+        identifier to execute the task
       - goal_advanced: which specific goal this advances
       - max_budget_usd: budget ceiling (0.5 - 3.0)
       - max_turns: agent turn limit (10 - 40)

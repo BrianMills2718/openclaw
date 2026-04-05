@@ -405,6 +405,17 @@ def _planner_lineage(task: dict[str, Any], *, task_id: str, created_at: datetime
     }
 
 
+def _review_cycle_runtime_model(task: dict[str, Any]) -> str:
+    """Map planner-selected workspace agents to graph-runtime model aliases."""
+
+    agent = str(task["agent"]).strip()
+    if agent == "claude":
+        return "claude-code"
+    if agent in {"codex", "claude-code"}:
+        return agent
+    raise ValueError(f"review_cycle tasks require workspace agents, got {agent!r}")
+
+
 def write_flat_task_file(
     task: dict[str, Any],
     *,
@@ -479,12 +490,12 @@ def write_review_cycle_task_file(
             "implement": {
                 **cfg["agents"]["implement"],
                 "agent": task["agent"],
-                "model": task["model"],
+                "model": _review_cycle_runtime_model(task),
             },
             "synthesis": {
                 **cfg["agents"]["synthesis"],
                 "agent": task["agent"],
-                "model": task["model"],
+                "model": _review_cycle_runtime_model(task),
             },
         },
     }
