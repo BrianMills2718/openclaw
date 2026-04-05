@@ -250,3 +250,42 @@ Decision:
 - keep explicit operator overrides honored
 - rerun the same fresh graph without any transport override to prove the new
   default completes truthfully
+
+## 2026-04-04 21:36 PT - External Provider Limit Reached
+
+The next remaining fresh-graph proofs are currently blocked by an external
+Codex account/runtime limit, not by a local `moltbot` or `llm_client` code bug.
+
+Verified evidence:
+
+- direct llm_client SDK path (isolated worktree import) failed with:
+  `You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at 10:07 PM.`
+- direct isolated CLI repro also failed with the same usage-limit message
+  after startup:
+  - `ERROR: You've hit your usage limit ... try again at 10:07 PM.`
+- the same CLI stderr also still reports a broken external MCP auth surface:
+  `mcp.linear.app ... invalid_token`
+
+Local actions completed before stopping:
+
+- committed `moltbot` import-precedence/runtime proof work
+- committed `moltbot` transport-default documentation updates
+- committed shared `llm_client` Codex-home isolation fix
+- updated `README.md` to document the proven CLI default and override rule
+
+Why this is a hard stop:
+
+- further fresh review-cycle proofs require live Codex execution
+- the provider is currently refusing new work for this account/runtime window
+- there is no local code-only workaround for exhausted provider quota
+
+Exact restart path once quota resets:
+
+1. Ensure `PYTHONPATH=/home/brian/projects/llm_client_worktrees/codex-transport-fallback:$PYTHONPATH`
+2. Re-run the fresh README graph from:
+   `/tmp/openclaw-proof-readme-fresh/failed/planner-2026-04-05-document-cli-default-readme.yaml`
+3. Confirm the resulting report lands in `/tmp/openclaw-proof-readme-fresh/reports/`
+   with:
+   - `status = completed`
+   - `review_gate.passed = true`
+   - `commit_evidence.passed = true`
