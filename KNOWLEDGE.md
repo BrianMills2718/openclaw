@@ -150,3 +150,22 @@ Current safe rule:
 
 That keeps planner drift from silently entering the queue and makes
 `--audit-delivery-readiness` a truthful gate for this class of bug.
+
+### 2026-04-04 — codex — integration-issue
+
+`launch_review_cycle` review lanes currently use `agent: direct` plus
+file-based validators (`file_exists`, `json_schema`) on `review.json`.
+
+Measured failure:
+- `review_r1` returns valid text output from `gpt-5.2-pro`
+- no `review.json` file exists because direct LLM calls cannot write files
+- the graph fails in wave 2 even though the review content was produced
+
+Current local fix in `moltbot/scripts/meta/task_graph.py`:
+- when a failed direct task has exactly one declared output path and non-empty
+  `agent_output`, materialize that text to the output path
+- then replay validators and recover only if they now pass
+
+Keep this rule narrow. It is a bridge between direct text-generation lanes and
+the graph's file-oriented validator contract, not a general excuse to mask
+other validator failures.

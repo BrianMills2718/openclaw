@@ -290,3 +290,18 @@ If a hard stop condition occurs:
 - Added regression tests for both contracts
 - Next phase: regenerate the proof graph using the corrected planner boundary,
   audit it, and run the full planner -> review -> commit path again
+
+### 2026-04-04T11:00:00Z
+
+- Running the proof with the llm_client Codex fallback patch on `PYTHONPATH`
+  advanced the graph past implementation and into the review lane
+- `implement_r1` is now no longer the blocker:
+  the local shim recovered it after validators passed and the implementation
+  note was written successfully
+- The new blocker is the direct review lane itself:
+  `review_r1` produced model output but no `review.json`, so file-based review
+  validators failed in wave 2
+- Fixed the local task-graph shim to materialize direct single-output task text
+  to the declared output path before validator replay, with regression coverage
+- Next phase: commit the shim fix, then resume the same proof task so it can
+  proceed beyond the review lane and test synthesis plus commit gating

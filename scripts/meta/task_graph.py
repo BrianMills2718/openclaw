@@ -113,6 +113,25 @@ def _recover_postsuccess_failure(
     if not validators:
         return result
 
+    if (
+        getattr(task, "agent", None) == "direct"
+        and isinstance(getattr(result, "agent_output", None), str)
+        and result.agent_output.strip()
+    ):
+        outputs = getattr(task, "outputs", None)
+        if isinstance(outputs, dict) and len(outputs) == 1:
+            output_path = next(iter(outputs.values()))
+            if isinstance(output_path, str) and output_path.strip():
+                output_file = Path(output_path).expanduser()
+                if not output_file.exists():
+                    output_file.parent.mkdir(parents=True, exist_ok=True)
+                    output_file.write_text(result.agent_output.strip() + "\n")
+                    logger.warning(
+                        "Materialized direct task output for %s at %s before validator replay",
+                        getattr(task, "id", "<unknown>"),
+                        output_file,
+                    )
+
     validation_results = _MODULE.run_validators(validators)
     def _validator_passed(item: Any) -> bool:
         if isinstance(item, dict):
