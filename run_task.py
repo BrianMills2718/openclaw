@@ -183,6 +183,7 @@ class TaskSpec:
     source_path: Path
     model: str | None = None  # Explicit model override; baseline requires it for flat tasks
     reasoning_effort: str | None = None  # "low", "medium", "high", "xhigh"
+    planner_lineage: dict | None = None  # Planner metadata (task_kind, delivery_mode, etc.)
 
     @classmethod
     def from_file(cls, path: Path) -> "TaskSpec":
@@ -223,6 +224,7 @@ class TaskSpec:
             source_path=path,
             model=meta.get("model"),
             reasoning_effort=meta.get("reasoning_effort"),
+            planner_lineage=meta.get("planner_lineage") or {},
         )
 
     def sort_key(self) -> tuple[int, str]:
@@ -452,11 +454,17 @@ def _run_validation(task: TaskSpec, pre_status: str = "") -> tuple[bool, str]:
     else:
         checks_passed.append("No new uncommitted changes")
 
-    # Check if test suite exists and passes
+    # Check if test suite exists and passes.
+    # For docs_only/analysis_only tasks, skip tests: the agent only wrote docs,
+    # so pre-existing test failures are not attributable to this task.
+    task_kind = (task.planner_lineage or {}).get("task_kind", "")
+    _skip_tests = task_kind in ("docs_only", "analysis_only")
     has_pytest = (project / "pytest.ini").exists() or (project / "pyproject.toml").exists()
     has_tests = (project / "tests").is_dir()
 
-    if has_pytest and has_tests:
+    if _skip_tests:
+        checks_passed.append(f"Tests skipped (task_kind={task_kind!r})")
+    elif has_pytest and has_tests:
         if venv_python.exists():
             test_result = subprocess.run(
                 [str(venv_python), "-m", "pytest", "--tb=short", "-q"],
@@ -505,12 +513,17 @@ def _run_validation(task: TaskSpec, pre_status: str = "") -> tuple[bool, str]:
     else:
         checks_passed.append("Event taxonomy parity skipped (not a governance repo)")
 
-    # Scaffold validators (syntax, stubs, test existence) when available
+    # Scaffold validators (syntax, stubs, test existence) when available.
+    # For docs_only/analysis_only tasks, skip stub detection: the agent only
+    # writes markdown; pre-existing Python stubs are not the agent's fault.
+    task_kind = (task.planner_lineage or {}).get("task_kind", "")
+    _skip_stubs = task_kind in ("docs_only", "analysis_only")
     try:
         from agentic_scaffolding.validators.fail_fast import fail_fast
-        ff_result = fail_fast(workspace=project)
+        ff_result = fail_fast(workspace=project, check_stubs=not _skip_stubs)
         if ff_result.passed:
-            checks_passed.append("scaffold.fail_fast pass")
+            label = "scaffold.fail_fast pass" + (" (stubs skipped)" if _skip_stubs else "")
+            checks_passed.append(label)
         else:
             checks_failed.append(f"scaffold.fail_fast: {'; '.join(ff_result.errors)}")
     except ImportError:
