@@ -30,6 +30,7 @@ task_kind: docs_only
 delivery_mode: flat
 planner_lineage:
   planner_task_id: planner-2026-04-04-docs-refresh
+  generated_at: "2026-04-04T10:00:00+00:00"
 constraints:
   max_turns: 12
   max_budget_usd: 1.0
@@ -75,6 +76,7 @@ def test_audit_delivery_readiness_for_flat_task_reports_ready_state(
     assert audit["task_kind"] == "docs_only"
     assert audit["delivery_mode"] == "flat"
     assert audit["planner_lineage"]["planner_task_id"] == "planner-2026-04-04-docs-refresh"
+    assert audit["planner_lineage"]["generated_at"] == "2026-04-04T10:00:00+00:00"
     assert audit["budget_check"]["passed"] is True
     assert audit["preflight"]["passed"] is True
 
@@ -115,7 +117,10 @@ def test_audit_delivery_readiness_for_graph_reports_ready_state(
                 "metadata": {
                     "delivery_mode": "review_cycle",
                     "task_kind": "code_change",
-                    "planner_lineage": {"planner_task_id": "planner-2026-04-04-demo-task"},
+                    "planner_lineage": {
+                        "planner_task_id": "planner-2026-04-04-demo-task",
+                        "generated_at": "2026-04-04T12:34:56+00:00",
+                    },
                 },
             },
             sort_keys=False,
@@ -131,6 +136,8 @@ def test_audit_delivery_readiness_for_graph_reports_ready_state(
     assert audit["wave_count"] == 3
     assert audit["task_kind"] == "code_change"
     assert audit["delivery_mode"] == "review_cycle"
+    assert audit["planner_lineage"]["planner_task_id"] == "planner-2026-04-04-demo-task"
+    assert audit["planner_lineage"]["generated_at"] == "2026-04-04T12:34:56+00:00"
     assert audit["preflight"]["passed"] is True
 
 
@@ -191,6 +198,118 @@ def test_audit_delivery_readiness_reports_load_failures_without_throwing(
     assert audit["preflight"]["passed"] is False
     assert audit["preflight"]["failure_event_codes"] == ["OPENCLAW_AUDIT_LOAD_FAILED"]
     assert audit["preflight"]["failures"][0]["error_code"] == "OPENCLAW_AUDIT_LOAD_FAILED"
+
+
+def test_print_delivery_readiness_audit_for_graph_shows_planner_lineage(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Graph audit output should expose planner lineage fields when present."""
+
+    run_task._print_delivery_readiness_audit(
+        {
+            "ready": True,
+            "task_file": "/tmp/graph-1.yaml",
+            "task_type": "graph",
+            "graph_id": "graph-1",
+            "description": "demo graph",
+            "task_count": 3,
+            "wave_count": 2,
+            "planner_lineage": {
+                "planner_task_id": "planner-2026-04-04-demo-task",
+                "generated_at": "2026-04-04T12:34:56+00:00",
+            },
+            "task_kind": "code_change",
+            "delivery_mode": "review_cycle",
+            "budget_check": {"passed": True, "spent_today_usd": 0.5, "daily_budget_usd": 20.0},
+            "preflight": {"passed": True, "checks": [], "failures": [], "failure_event_codes": []},
+        }
+    )
+
+    output = capsys.readouterr().out
+    assert "Planner task ID: planner-2026-04-04-demo-task" in output
+    assert "Generated at: 2026-04-04T12:34:56+00:00" in output
+
+
+def test_print_delivery_readiness_audit_for_flat_shows_planner_lineage(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Flat audit output should expose planner lineage fields when present."""
+
+    run_task._print_delivery_readiness_audit(
+        {
+            "ready": True,
+            "task_file": "/tmp/planner-2026-04-04-docs-refresh.md",
+            "task_type": "flat",
+            "task_id": "planner-2026-04-04-docs-refresh",
+            "title": "Refresh docs",
+            "agent": "codex",
+            "model": "codex",
+            "project": "/tmp/repo",
+            "priority": "medium",
+            "planner_lineage": {
+                "planner_task_id": "planner-2026-04-04-docs-refresh",
+                "generated_at": "2026-04-04T10:00:00+00:00",
+            },
+            "task_kind": "docs_only",
+            "delivery_mode": "flat",
+            "budget_check": {"passed": True, "spent_today_usd": 0.25, "daily_budget_usd": 20.0},
+            "preflight": {"passed": True, "checks": [], "failures": [], "failure_event_codes": []},
+        }
+    )
+
+    output = capsys.readouterr().out
+    assert "Planner task ID: planner-2026-04-04-docs-refresh" in output
+    assert "Generated at: 2026-04-04T10:00:00+00:00" in output
+
+
+def test_print_delivery_readiness_audit_for_flat_omits_missing_planner_lineage(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Flat audit output should stay clean when planner lineage is absent."""
+
+    run_task._print_delivery_readiness_audit(
+        {
+            "ready": True,
+            "task_file": "/tmp/manual-task.md",
+            "task_type": "flat",
+            "task_id": "manual-task",
+            "title": "Some manual task",
+            "agent": "codex",
+            "model": "codex",
+            "project": "/tmp/repo",
+            "priority": "medium",
+            "budget_check": {"passed": True, "spent_today_usd": 0.5, "daily_budget_usd": 20.0},
+            "preflight": {"passed": True, "checks": [], "failures": [], "failure_event_codes": []},
+        }
+    )
+
+    output = capsys.readouterr().out
+    assert "Planner task ID:" not in output
+    assert "Generated at:" not in output
+
+
+def test_print_delivery_readiness_audit_for_graph_omits_missing_planner_lineage(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Graph audit output should stay clean when planner lineage is absent."""
+
+    run_task._print_delivery_readiness_audit(
+        {
+            "ready": True,
+            "task_file": "/tmp/graph-1.yaml",
+            "task_type": "graph",
+            "graph_id": "graph-1",
+            "description": "demo graph",
+            "task_count": 3,
+            "wave_count": 2,
+            "budget_check": {"passed": True, "spent_today_usd": 0.5, "daily_budget_usd": 20.0},
+            "preflight": {"passed": True, "checks": [], "failures": [], "failure_event_codes": []},
+        }
+    )
+
+    output = capsys.readouterr().out
+    assert "Planner task ID:" not in output
+    assert "Generated at:" not in output
 
 
 def test_main_audit_delivery_readiness_exits_before_task_execution(

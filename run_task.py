@@ -1756,6 +1756,13 @@ def _audit_delivery_readiness(task_path: Path) -> dict[str, Any]:
 def _print_delivery_readiness_audit(audit: dict[str, Any]) -> None:
     """Render one human-readable delivery-readiness audit."""
 
+    planner_lineage = audit.get("planner_lineage")
+    planner_task_id = None
+    planner_generated_at = None
+    if isinstance(planner_lineage, dict):
+        planner_task_id = planner_lineage.get("planner_task_id")
+        planner_generated_at = planner_lineage.get("generated_at")
+
     print(f"Ready for execution: {'YES' if audit['ready'] else 'NO'}")
     print(f"Task file: {audit['task_file']}")
     print(f"Task type: {audit['task_type']}")
@@ -1767,12 +1774,20 @@ def _print_delivery_readiness_audit(audit: dict[str, Any]) -> None:
             f"Graph shape: {audit.get('task_count', 0)} tasks, "
             f"{audit.get('wave_count', 0)} waves"
         )
+        if planner_task_id:
+            print(f"Planner task ID: {planner_task_id}")
+        if planner_generated_at:
+            print(f"Generated at: {planner_generated_at}")
     else:
         print(f"Task: {audit.get('task_id', 'unknown')} — {audit.get('title', '')}")
         print(f"Agent: {audit.get('agent', 'unknown')}")
         print(f"Model: {audit.get('model') or 'MISSING'}")
         print(f"Project: {audit.get('project', 'unknown')}")
         print(f"Priority: {audit.get('priority', 'unknown')}")
+        if planner_task_id:
+            print(f"Planner task ID: {planner_task_id}")
+        if planner_generated_at:
+            print(f"Generated at: {planner_generated_at}")
 
     if audit.get("task_kind"):
         print(f"Task kind: {audit['task_kind']}")
