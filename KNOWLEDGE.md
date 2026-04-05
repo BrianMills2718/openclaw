@@ -72,3 +72,17 @@ Measured failure:
 
 For file-writing review-cycle lanes, keep the resolved model agent-capable
 (`codex`, `claude-code`, or another workspace-agent family).
+
+### 2026-04-04 — codex — integration-issue
+
+Workspace-agent review-cycle tasks cannot reliably write artifacts outside the
+ target repo boundary. A cycle workspace rooted at `~/.openclaw/workspace/...`
+ caused `context_init` to fail even after the model/agent mismatch was fixed,
+ because the agent never produced the required file.
+
+The current safe default is a repo-local workspace root:
+- `workspace_dir: .openclaw/review-cycles`
+- relative workspace roots resolve under the target `project_path`
+
+That keeps context packs, implementation notes, review JSON, and synthesis
+artifacts inside the repo tree the workspace agent can actually mutate.

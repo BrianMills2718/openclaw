@@ -245,7 +245,11 @@ def build_graph(
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a YAML task graph for an implementation-review cycle."""
-    ws_dir = Path(str(config["workspace_dir"]).replace("~", str(Path.home()))).resolve()
+    ws_dir = Path(str(config["workspace_dir"]).replace("~", str(Path.home())))
+    if not ws_dir.is_absolute():
+        ws_dir = (project_path / ws_dir).resolve()
+    else:
+        ws_dir = ws_dir.resolve()
     cycle_dir = ws_dir / cycle_id
     final_review_json = cycle_dir / f"round_{rounds}" / "review.json"
     final_report = cycle_dir / "final_decision.md"

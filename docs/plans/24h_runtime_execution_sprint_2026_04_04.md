@@ -199,3 +199,15 @@ If a hard stop condition occurs:
   and added a regression test for that contract
 - Next phase: regenerate the proof graph from the planner and rerun the
   end-to-end cycle
+
+### 2026-04-04T04:00:00Z
+
+- Second proof attempt proved the agent-capable model fix worked: wave 1 now
+  dispatched `context_init` as `codex`
+- The next concrete blocker was artifact locality: repo agents did not produce
+  review-cycle workspace files under `~/.openclaw/workspace/...`
+- Updated the review-cycle default workspace to repo-local
+  `.openclaw/review-cycles` and taught `build_graph()` to resolve relative
+  workspace roots under the target repo
+- Added a regression test to keep relative cycle workspaces inside the repo
+- Next phase: regenerate the proof graph again and continue the end-to-end run

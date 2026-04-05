@@ -88,3 +88,21 @@ def test_default_context_and_synthesis_models_use_agent_runtime() -> None:
 
     assert graph["tasks"]["context_init"]["model"] == "codex"
     assert graph["tasks"]["synthesize"]["model"] == "codex"
+
+
+def test_relative_workspace_dir_resolves_inside_project(tmp_path: Path) -> None:
+    """Relative workspace roots must stay inside the target repo boundary."""
+
+    graph = launch_review_cycle.build_graph(
+        cycle_id="planner-2026-04-04-demo-task",
+        project_path=tmp_path / "repo",
+        objective="Implement the bounded change.",
+        rounds=1,
+        config={
+            **_config(tmp_path),
+            "workspace_dir": ".openclaw/review-cycles",
+        },
+    )
+
+    context_path = Path(graph["tasks"]["context_init"]["outputs"]["context_pack"])
+    assert str(context_path).startswith(str((tmp_path / "repo").resolve()))

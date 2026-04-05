@@ -3,7 +3,7 @@
 
 # Home-relative runtime defaults (portable across users/hosts).
 queue_dir: ~/.openclaw/tasks/pending
-workspace_dir: ~/.openclaw/workspace/review-cycles
+workspace_dir: .openclaw/review-cycles
 
 cycle:
   rounds: 3
