@@ -47,6 +47,9 @@ Delivery-readiness audit:
 - `python run_task.py --audit-delivery-readiness <task-file>` parses the task,
   runs the same deterministic preflight and budget checks used at execution
   time, and prints a readiness report without moving or executing the task.
+- When planner lineage metadata exists, the audit also prints `Planner task
+  ID` and `Planner generated at` so queued work can be traced back to the
+  originating planner artifact.
 - Exit status `0` means the task is ready to execute; exit status `1` means the
   task is not ready and the printed audit explains why.
 

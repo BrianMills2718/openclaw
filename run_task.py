@@ -120,14 +120,15 @@ def _bootstrap_shared_import_roots() -> None:
 def _bootstrap_runtime_env_defaults() -> None:
     """Apply runtime transport defaults needed for autonomous agent execution.
 
-    OpenClaw file-writing Codex tasks are materially safer on `auto` transport:
-    with the current timeout policy (`LLM_CLIENT_TIMEOUT_POLICY=ban`), llm_client
-    routes directly to the CLI path with an enforced hard timeout, and in
-    environments where the SDK path still runs, `auto` retains the ability to
-    fall back to CLI on transport-layer failures.
+    OpenClaw file-writing Codex tasks are materially safer on explicit `cli`
+    transport. The current `auto` path can still spend most of a graph task in
+    the SDK lane before falling back, which leaves long review-cycle steps
+    exposed to the 300s task timeout even when `LLM_CLIENT_TIMEOUT_POLICY=ban`.
+    Operators can still override this per-run, but the autonomous default
+    should follow the path already proven to complete end to end.
     """
 
-    os.environ.setdefault("LLM_CLIENT_CODEX_TRANSPORT", "auto")
+    os.environ.setdefault("LLM_CLIENT_CODEX_TRANSPORT", "cli")
 
 
 _bootstrap_shared_import_roots()
@@ -2026,7 +2027,7 @@ def _print_planner_lineage(
     if planner_task_id:
         print(f"Planner task ID: {planner_task_id}")
     if planner_generated_at:
-        print(f"Generated at: {planner_generated_at}")
+        print(f"Planner generated at: {planner_generated_at}")
 
 
 # ---------------------------------------------------------------------------

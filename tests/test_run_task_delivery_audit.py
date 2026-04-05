@@ -228,7 +228,7 @@ def test_print_delivery_readiness_audit_for_graph_shows_planner_lineage(
 
     output = capsys.readouterr().out
     assert "Planner task ID: planner-2026-04-04-demo-task" in output
-    assert "Generated at: 2026-04-04T12:34:56+00:00" in output
+    assert "Planner generated at: 2026-04-04T12:34:56+00:00" in output
 
 
 def test_print_delivery_readiness_audit_for_graph_normalizes_datetime_lineage(
@@ -255,7 +255,7 @@ def test_print_delivery_readiness_audit_for_graph_normalizes_datetime_lineage(
     )
 
     output = capsys.readouterr().out
-    assert "Generated at: 2026-04-04T12:34:56+00:00" in output
+    assert "Planner generated at: 2026-04-04T12:34:56+00:00" in output
 
 
 def test_print_delivery_readiness_audit_for_flat_shows_planner_lineage(
@@ -287,7 +287,7 @@ def test_print_delivery_readiness_audit_for_flat_shows_planner_lineage(
 
     output = capsys.readouterr().out
     assert "Planner task ID: planner-2026-04-04-docs-refresh" in output
-    assert "Generated at: 2026-04-04T10:00:00+00:00" in output
+    assert "Planner generated at: 2026-04-04T10:00:00+00:00" in output
 
 
 def test_print_delivery_readiness_audit_for_flat_omits_missing_planner_lineage(
@@ -313,7 +313,7 @@ def test_print_delivery_readiness_audit_for_flat_omits_missing_planner_lineage(
 
     output = capsys.readouterr().out
     assert "Planner task ID:" not in output
-    assert "Generated at:" not in output
+    assert "Planner generated at:" not in output
 
 
 def test_print_delivery_readiness_audit_for_flat_falls_back_to_task_metadata(
@@ -342,7 +342,7 @@ def test_print_delivery_readiness_audit_for_flat_falls_back_to_task_metadata(
 
     output = capsys.readouterr().out
     assert "Planner task ID: planner-2026-04-04-docs-refresh" in output
-    assert "Generated at: 2026-04-04T09:30:00+00:00" in output
+    assert "Planner generated at: 2026-04-04T09:30:00+00:00" in output
 
 
 def test_print_delivery_readiness_audit_for_graph_omits_missing_planner_lineage(
@@ -366,7 +366,7 @@ def test_print_delivery_readiness_audit_for_graph_omits_missing_planner_lineage(
 
     output = capsys.readouterr().out
     assert "Planner task ID:" not in output
-    assert "Generated at:" not in output
+    assert "Planner generated at:" not in output
 
 
 def test_main_audit_delivery_readiness_exits_before_task_execution(
@@ -498,7 +498,7 @@ def test_main_audit_delivery_readiness_prints_planner_lineage(
     output = capsys.readouterr().out
     assert excinfo.value.code == 0
     assert "Planner task ID: planner-2026-04-04-docs-refresh" in output
-    assert "Generated at: 2026-04-04T10:00:00+00:00" in output
+    assert "Planner generated at: 2026-04-04T10:00:00+00:00" in output
 
 
 def test_main_audit_delivery_readiness_loads_and_prints_flat_task_lineage(
@@ -535,7 +535,7 @@ def test_main_audit_delivery_readiness_loads_and_prints_flat_task_lineage(
     output = capsys.readouterr().out
     assert excinfo.value.code == 0
     assert "Planner task ID: planner-2026-04-04-docs-refresh" in output
-    assert "Generated at: 2026-04-04T10:00:00+00:00" in output
+    assert "Planner generated at: 2026-04-04T10:00:00+00:00" in output
 
 
 def test_main_audit_delivery_readiness_loads_and_prints_graph_task_lineage(
@@ -602,4 +602,4 @@ def test_main_audit_delivery_readiness_loads_and_prints_graph_task_lineage(
     output = capsys.readouterr().out
     assert excinfo.value.code == 0
     assert "Planner task ID: planner-2026-04-04-demo-task" in output
-    assert "Generated at: 2026-04-04T12:34:56+00:00" in output
+    assert "Planner generated at: 2026-04-04T12:34:56+00:00" in output
