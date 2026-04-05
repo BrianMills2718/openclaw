@@ -1,6 +1,6 @@
 # Plan #3: Graph Report Task-Result Observability
 
-**Status:** Planned
+**Status:** In Progress
 **Type:** implementation
 **Priority:** High
 **Blocked By:** Merge of Plan #2 branches into canonical `llm_client` and `openclaw`
