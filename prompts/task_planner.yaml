@@ -77,7 +77,7 @@ messages:
       - priority: high | medium | low
       - agent: codex | claude-code
       - project: full path to project directory
-      - model: exact model identifier to execute this task (required)
+      - model: agent runtime identifier — MUST be exactly "codex" when agent=codex, or exactly "claude-code" when agent=claude-code (never a raw LLM model name like "claude-3-5-sonnet-20240620")
       - goal_advanced: which specific goal this advances
       - max_budget_usd: budget ceiling (0.5 - 3.0)
       - max_turns: agent turn limit (10 - 40)
