@@ -2,11 +2,11 @@
 
 **Date**: 2026-02-16
 **Status**: Design — not yet implemented
-**Depends on**: `llm_client` Phase 1 (task_graph.py, validators.py, difficulty.py, analyzer.py) — all committed and pushed.
+**Depends on**: local runtime modules in `moltbot` (`task_graph.py`, `analyzer.py`) plus shared infra (`llm_client`, validators, difficulty routing).
 
 ## Overview
 
-This document specifies how `run_task.py` (the OpenClaw task runner at `~/.openclaw/bin/run_task.py`) evolves to support YAML task graphs via `llm_client.task_graph`. The new system runs alongside the existing flat-task format — no breaking changes.
+This document specifies how `run_task.py` (the OpenClaw task runner at `~/.openclaw/bin/run_task.py`) supports YAML task graphs via the local `task_graph.py` runtime module. The new system runs alongside the existing flat-task format — no breaking changes.
 
 ## 1. Task Format Detection
 
@@ -20,8 +20,8 @@ This document specifies how `run_task.py` (the OpenClaw task runner at `~/.openc
 ### Changes to `run_task.py`
 
 ```python
-from llm_client.task_graph import load_graph, run_graph, ExecutionReport
-from llm_client.analyzer import analyze_run
+from task_graph import load_graph, run_graph, ExecutionReport
+from analyzer import analyze_run
 
 async def run_task(task_path: Path) -> bool:
     """Main entry — dispatches to flat or graph handler based on extension."""
@@ -542,7 +542,7 @@ Add to the "Must Transfer" section:
 Add to the "Post-Transfer" checklist:
 
 - [ ] Generate `mcp_registry.toml` (run `generate_mcp_registry.py` or copy from WSL2)
-- [ ] Verify: `python3 -c "from llm_client.task_graph import load_graph; print('ok')"`
+- [ ] Verify: `python3 -c "from task_graph import load_graph; print('ok')"`
 - [ ] Dry-run smoke test: `run_task.py --dry-run ~/.openclaw/tasks/templates/smoke_test.yaml`
 - [ ] Live smoke test: `run_task.py ~/.openclaw/tasks/templates/smoke_test.yaml`
 
