@@ -289,3 +289,31 @@ Exact restart path once quota resets:
    - `status = completed`
    - `review_gate.passed = true`
    - `commit_evidence.passed = true`
+
+## 2026-04-04 22:32 PT - Fresh README Graph Passed End To End
+
+Quota reset removed the external provider stop condition, and the fresh README
+graph now completes truthfully through the real script entrypoint.
+
+Verified evidence:
+
+- report:
+  `/tmp/openclaw-proof-readme-fresh/reports/planner-2026-04-05-document-cli-default-readme_20260405T053153Z.json`
+- final report fields:
+  - `status = completed`
+  - `destination = completed`
+  - `review_gate.passed = true`
+  - `commit_evidence.passed = true`
+  - `commit_evidence.commit_sha = 7fd4ff833c430956a9589adc4e67c153d1aca20b`
+- provenance still confirms the intended runtime path:
+  - llm_client imported from the llm_client worktree
+  - `codex_transport_resolved = cli`
+  - script-entrypoint runner executed all 3 waves
+
+Outcome:
+
+- planner -> review -> commit is now proven through the real `python run_task.py <graph>` path
+- import-precedence divergence is fixed
+- operator-default Codex transport policy is documented and tested
+- shared llm_client runtime now isolates Codex home by default to avoid leaking
+  broken global MCP config into autonomous runs
