@@ -1177,6 +1177,23 @@ def _summarize_graph_task_results(task_results: Any) -> list[dict[str, Any]]:
     return [_summarize_graph_task_result(task_result) for task_result in task_results]
 
 
+def _first_failed_graph_task_id(task_result_summaries: Any) -> str | None:
+    """Return the first failed task id for run-level graph triage."""
+
+    if not isinstance(task_result_summaries, list):
+        return None
+
+    for task_result in task_result_summaries:
+        if not isinstance(task_result, dict):
+            continue
+        if str(task_result.get("status") or "") != "failed":
+            continue
+        task_id = str(task_result.get("task_id") or "").strip()
+        if task_id:
+            return task_id
+    return None
+
+
 def _run_flat_preflight(task: TaskSpec) -> dict[str, Any]:
     """Deterministic preflight checks for flat tasks."""
     checks: list[dict[str, Any]] = []
@@ -1907,7 +1924,7 @@ async def _run_graph_task(task_path: Path) -> bool:
             ),
             evidence_refs=[] if final_status == "completed" else failure_codes,
         )
-        report_payload["run"] = {
+        run_summary = {
             "graph_execution_status": report.status,
             "total_cost_usd": report.total_cost_usd,
             "total_duration_s": report.total_duration_s,
@@ -1915,6 +1932,10 @@ async def _run_graph_task(task_path: Path) -> bool:
             "waves_total": report.waves_total,
             "task_results_count": len(report.task_results),
         }
+        first_failed_task_id = _first_failed_graph_task_id(task_result_summaries)
+        if first_failed_task_id:
+            run_summary["first_failed_task_id"] = first_failed_task_id
+        report_payload["run"] = run_summary
         report_payload["primary_failure_class"] = primary_failure_class
         report_payload["failure_event_codes"] = failure_codes
         report_payload["finished_at"] = datetime.now(timezone.utc).isoformat()

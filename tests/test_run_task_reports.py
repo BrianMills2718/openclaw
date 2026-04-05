@@ -193,6 +193,7 @@ def test_graph_report_exposes_failed_task_error_directly(
 
     assert completed is False
     assert reports[-1]["status"] == "failed"
+    assert reports[-1]["run"]["first_failed_task_id"] == "implement_r1"
     assert reports[-1]["task_results"][0]["task_id"] == "implement_r1"
     assert reports[-1]["task_results"][0]["error"] == "validator failed: implementation.md missing"
     assert reports[-1]["task_results"][0]["validation_summary"]["failure_refs"] == [
