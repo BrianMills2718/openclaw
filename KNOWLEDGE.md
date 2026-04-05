@@ -286,3 +286,42 @@ Current safe rule:
 - preserve explicit operator overrides
 - revisit `auto` only after the SDK-first timeout behavior is fixed and proven
   on the real review-cycle graph path
+
+### 2026-04-05 — codex — integration-issue
+
+The extracted `scripts.meta.{task_graph,analyzer}` shims were still pointing at
+the old `project-meta/scripts/meta/` runtime path after the runtime had already
+moved into local top-level `moltbot/task_graph.py` and `moltbot/analyzer.py`.
+
+Measured failure:
+- post-merge mainline verification of `tests/test_runtime_bootstrap_imports.py`
+  failed immediately with `FileNotFoundError` for
+  `~/projects/project-meta/scripts/meta/task_graph.py`
+- the repo already contained the canonical local runtime files at
+  `task_graph.py` and `analyzer.py`
+- the stale shims only persisted because the earlier proof path exercised the
+  runtime via the existing loaded modules, not via a fresh clean import on
+  merged mainline
+
+Current safe rule:
+- `scripts.meta` compatibility shims in `moltbot` must load the repo-local
+  top-level runtime modules, not reach back into `project-meta`
+- any extraction-path assumption should be re-verified on a clean post-merge
+  import test before claiming mainline truth
+
+### 2026-04-05 — codex — workaround
+
+For post-merge OpenClaw proof runs, the truthful `llm_client` source is the
+dedicated merge worktree at commit `c235350`, not the canonical
+`~/projects/llm_client` checkout.
+
+Measured state:
+- `llm_client/main` was merged and pushed from the integration worktree
+- the canonical checkout still had one unrelated local commit and untracked
+  files, so using it as the proof dependency would mix approved merge content
+  with checkout-local drift
+
+Current safe rule:
+- when a canonical shared-infra checkout has unrelated local drift, point real
+  proofs at the verified merged integration worktree path until the canonical
+  checkout is separately reconciled
