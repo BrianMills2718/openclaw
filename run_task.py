@@ -58,6 +58,11 @@ def _bootstrap_shared_import_roots() -> None:
     ).expanduser().resolve()
     for repo_name in ("llm_client", "agentic_scaffolding"):
         _prepend_repo_root_if_present(projects_root / repo_name)
+    project_meta_root = Path(
+        os.environ.get("PROJECT_META_ROOT", str(projects_root / "project-meta"))
+    ).expanduser().resolve()
+    _prepend_repo_root_if_present(project_meta_root)
+    _prepend_repo_root_if_present(project_meta_root / "scripts" / "meta")
 
 
 _bootstrap_shared_import_roots()

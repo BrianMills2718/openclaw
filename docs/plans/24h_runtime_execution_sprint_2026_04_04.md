@@ -185,3 +185,17 @@ If a hard stop condition occurs:
 - Targeted test suite passed across planner, graph-builder, runtime gate, and
   bounded recovery coverage
 - Next phase: README truthfulness updates and one real end-to-end proof task
+
+### 2026-04-04T03:00:00Z
+
+- First proof attempt reached real graph dispatch and exposed two concrete
+  blockers instead of speculative ones:
+  - `run_task.py` still needed truthful bootstrap roots for `project-meta`
+    `scripts.meta.*` imports
+  - `review_cycle.defaults.yaml` pinned non-agent models for file-writing
+    context/synthesis tasks, causing validator failure in wave 1
+- Added a runtime import smoke test and fixed the bootstrap roots
+- Changed default context/synthesis models to agent-capable `codex` resolution
+  and added a regression test for that contract
+- Next phase: regenerate the proof graph from the planner and rerun the
+  end-to-end cycle

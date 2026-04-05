@@ -57,3 +57,18 @@ execution. A worktree under `/home/brian/worktrees/...` breaks that assumption.
 
 Until the bootstrap logic is made path-agnostic, keep `moltbot` worktrees under
 `~/projects/` when executing the runtime from a worktree.
+
+### 2026-04-04 — codex — bug-pattern
+
+In `review_cycle.defaults.yaml`, any task that must write repo or workspace
+files cannot pin a plain text model like `gemini/gemini-2.5-flash` while also
+declaring `agent: codex`. The task-graph runner decides whether to use a
+workspace agent from the resolved model family, not the `agent` label alone.
+
+Measured failure:
+- `context_init` resolved to `gemini/gemini-2.5-flash`
+- task executed as a plain LLM call instead of a workspace agent
+- file validator failed because no file was ever written
+
+For file-writing review-cycle lanes, keep the resolved model agent-capable
+(`codex`, `claude-code`, or another workspace-agent family).

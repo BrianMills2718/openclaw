@@ -35,12 +35,12 @@ agents:
     mcp_servers: []
   context:
     agent: codex
-    model: gemini/gemini-2.5-flash
+    model: null
     difficulty: 2
     mcp_servers: []
   synthesis:
     agent: codex
-    model: gemini/gemini-2.5-flash
+    model: null
     difficulty: 2
     mcp_servers: []
 
