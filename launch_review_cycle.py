@@ -109,8 +109,9 @@ def _impl_prompt(
         "Execution requirements:",
         "1. Implement the required changes in the repo.",
         "2. Run relevant tests for changed code paths.",
-        "3. Write a concise implementation note file at the required path.",
-        "4. Include: changed files, tests run, residual risks.",
+        "3. Commit verified work with a descriptive commit message before finishing.",
+        "4. Write a concise implementation note file at the required path.",
+        "5. Include: changed files, tests run, residual risks, commit sha.",
         "",
         f"Write implementation note to: {impl_note_path}",
     ])

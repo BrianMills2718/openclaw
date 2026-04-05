@@ -169,3 +169,23 @@ Current local fix in `moltbot/scripts/meta/task_graph.py`:
 Keep this rule narrow. It is a bridge between direct text-generation lanes and
 the graph's file-oriented validator contract, not a general excuse to mask
 other validator failures.
+
+### 2026-04-04 — codex — best-practice
+
+The default review-cycle graph cannot truthfully use a direct review lane if
+the prompt only passes local artifact paths (`implementation.md`, `review.json`)
+instead of injecting file contents. A direct model cannot read those paths.
+
+Measured consequence:
+- review JSON becomes semantically `needs_changes` because the reviewer could
+  not access the implementation note or repo diff
+- the commit gate is also impossible to satisfy if the implementation prompt
+  never explicitly instructs the agent to create a commit
+
+Current safe default:
+- review lane should be a workspace agent (`codex` in the current runtime)
+- implementation prompt must explicitly require a descriptive commit before
+  finishing
+
+Without those two rules, the planner -> review -> commit path can execute but
+cannot satisfy its own semantic acceptance criteria.

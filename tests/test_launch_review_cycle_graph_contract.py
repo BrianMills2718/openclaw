@@ -17,9 +17,8 @@ def _config(tmp_path: Path) -> dict[str, object]:
         "agents": {
             "implement": {"agent": "codex", "model": None, "difficulty": 3, "mcp_servers": []},
             "review": {
-                "agent": "direct",
-                "model": "gpt-5.2-pro",
-                "reasoning_effort": "xhigh",
+                "agent": "codex",
+                "model": None,
                 "difficulty": 5,
                 "mcp_servers": [],
             },
@@ -87,7 +86,24 @@ def test_default_context_and_synthesis_models_use_agent_runtime() -> None:
     )
 
     assert "context_init" not in graph["tasks"]
+    assert graph["tasks"]["review_r1"]["agent"] == "codex"
+    assert graph["tasks"]["review_r1"]["model"] == "codex"
     assert graph["tasks"]["synthesize"]["model"] == "codex"
+
+
+def test_impl_prompt_requires_commit_before_finishing(tmp_path: Path) -> None:
+    """Implementation lanes must be told to commit so the commit gate can pass."""
+
+    graph = launch_review_cycle.build_graph(
+        cycle_id="planner-2026-04-04-demo-task",
+        project_path=tmp_path / "repo",
+        objective="Implement the bounded change.",
+        rounds=1,
+        config=_config(tmp_path),
+    )
+
+    prompt = graph["tasks"]["implement_r1"]["prompt"]
+    assert "Commit verified work with a descriptive commit message before finishing." in prompt
 
 
 def test_relative_workspace_dir_resolves_inside_project(tmp_path: Path) -> None:

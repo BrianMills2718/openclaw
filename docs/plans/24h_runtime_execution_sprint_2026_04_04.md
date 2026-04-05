@@ -305,3 +305,19 @@ If a hard stop condition occurs:
   to the declared output path before validator replay, with regression coverage
 - Next phase: commit the shim fix, then resume the same proof task so it can
   proceed beyond the review lane and test synthesis plus commit gating
+
+### 2026-04-04T12:00:00Z
+
+- The resumed proof advanced through implementation, review JSON materialization,
+  and synthesis artifact creation, which exposed the next semantic blockers
+- Direct review remained non-truthful even after file materialization because
+  the reviewer only received local file paths, not artifact contents
+- The implementation prompt also never explicitly required a commit, so the
+  commit gate was not satisfiable by construction
+- Fixed the graph producer defaults:
+  - default review lane is now a workspace Codex agent
+  - implementation prompts now explicitly require a descriptive commit before
+    finishing and note the commit SHA in the implementation note
+- Added graph-contract tests that lock down both requirements
+- Next phase: commit the default review/commit policy change, regenerate the
+  proof task under the corrected graph defaults, and rerun the full path

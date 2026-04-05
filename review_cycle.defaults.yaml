@@ -23,14 +23,12 @@ agents:
     difficulty: 3
     mcp_servers: []
   review:
-    # Deliberate Plan 07 baseline:
-    # keep the direct gpt-5.2-pro review lane as the default until a
-    # benchmark-backed comparison justifies a different review agent/model.
-    # Uses background mode (5-10 min thinking) via llm_client Responses API polling.
-    # Set agent/model explicitly in an override config to change this policy.
-    agent: direct
-    model: gpt-5.2-pro
-    reasoning_effort: xhigh
+    # Direct review proved non-truthful for local repo work because it cannot
+    # read implementation artifacts or emit file-based review outputs without a
+    # shim. Use a workspace agent by default so review can inspect local files,
+    # write review.json directly, and participate in the commit-gated path.
+    agent: codex
+    model: null
     difficulty: 5
     mcp_servers: []
   context:
