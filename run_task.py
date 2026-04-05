@@ -2295,7 +2295,10 @@ def main() -> None:
     parser.add_argument(
         "--audit-delivery-readiness",
         action="store_true",
-        help="Run a non-destructive readiness audit without executing the task.",
+        help=(
+            "Run a non-destructive readiness audit without executing the task; "
+            "prints planner lineage when present."
+        ),
     )
     parser.add_argument(
         "--scan-model-gaps",

@@ -536,3 +536,70 @@ def test_main_audit_delivery_readiness_loads_and_prints_flat_task_lineage(
     assert excinfo.value.code == 0
     assert "Planner task ID: planner-2026-04-04-docs-refresh" in output
     assert "Generated at: 2026-04-04T10:00:00+00:00" in output
+
+
+def test_main_audit_delivery_readiness_loads_and_prints_graph_task_lineage(
+    monkeypatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """CLI audit mode should print lineage from loaded graph metadata."""
+
+    task_graph_module = types.ModuleType("scripts.meta.task_graph")
+    task_graph_module.load_graph = lambda path: SimpleNamespace(
+        meta=SimpleNamespace(id="planner-2026-04-04-demo-graph", description="demo graph"),
+        tasks={"implement_r1": {}, "review_r1": {}, "synthesize": {}},
+        waves=[["implement_r1"], ["review_r1"], ["synthesize"]],
+    )
+    monkeypatch.setitem(sys.modules, "scripts.meta.task_graph", task_graph_module)
+    monkeypatch.setattr(sys, "argv", ["run_task.py", "--audit-delivery-readiness", str(tmp_path / "graph-1.yaml")])
+    monkeypatch.setattr(run_task, "_check_daily_budget", lambda: (True, 0.0))
+    monkeypatch.setattr(run_task, "_load_mcp_registry", lambda: {})
+    monkeypatch.setattr(
+        run_task,
+        "_run_graph_preflight",
+        lambda graph, mcp_configs: {
+            "passed": True,
+            "checks": [],
+            "failures": [],
+            "failure_event_codes": [],
+            "primary_failure_class": "none",
+        },
+    )
+    monkeypatch.setattr(
+        run_task.asyncio,
+        "run",
+        lambda coroutine: (_ for _ in ()).throw(AssertionError("task execution should not start in audit mode")),
+    )
+
+    task_path = tmp_path / "graph-1.yaml"
+    task_path.write_text(
+        yaml.safe_dump(
+            {
+                "graph": {
+                    "id": "planner-2026-04-04-demo-graph",
+                    "description": "demo graph",
+                    "timeout_minutes": 30,
+                    "checkpoint": "none",
+                },
+                "tasks": {"implement_r1": {}, "review_r1": {}, "synthesize": {}},
+                "metadata": {
+                    "delivery_mode": "review_cycle",
+                    "task_kind": "code_change",
+                    "planner_lineage": {
+                        "planner_task_id": "planner-2026-04-04-demo-task",
+                        "generated_at": "2026-04-04T12:34:56+00:00",
+                    },
+                },
+            },
+            sort_keys=False,
+        )
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        run_task.main()
+
+    output = capsys.readouterr().out
+    assert excinfo.value.code == 0
+    assert "Planner task ID: planner-2026-04-04-demo-task" in output
+    assert "Generated at: 2026-04-04T12:34:56+00:00" in output
