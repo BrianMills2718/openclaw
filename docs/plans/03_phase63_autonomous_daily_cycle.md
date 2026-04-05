@@ -71,8 +71,8 @@ not been completed. Human approval is NOT in the critical path (moltbot Plan #2 
 
 | Step | What | Status |
 |------|------|--------|
-| 1 | Verify cron entry includes required env vars and correct path to recommender | Not started |
-| 2 | Dry-run: manually invoke cron script and confirm tasks appear in `~/.openclaw/tasks/pending/` | Not started |
-| 3 | Monitor first autonomous 6am cycle; check `make review-gate-log` output | Not started |
+| 1 | Verify cron entry includes required env vars and correct path to recommender | ✅ Done (2026-04-04) — added `run_task.py --loop --max-runs 5` at 6:10am; cleared 25 stale + 5 stuck tasks |
+| 2 | Dry-run: manually invoke planner and confirm tasks appear with delivery_mode set | ✅ Done (2026-04-04) — `--dry-run --max-tasks 3` shows review_cycle tasks; model gap check passes |
+| 3 | Monitor first autonomous 6am cycle; check `make review-gate-log` output | Not started — watch next 6am run |
 | 4 | Repeat for 3 days; confirm ≥1 committed review-cycle task per day | Not started |
 | 5 | Document cron log location and monitoring workflow in `KNOWLEDGE.md` | Not started |
