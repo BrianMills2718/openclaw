@@ -6,6 +6,7 @@ import importlib.util
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 
 def _prepend_repo_root_if_present(path: Path) -> None:
@@ -43,3 +44,8 @@ analyze_run = _MODULE.analyze_run
 analyze_history = _MODULE.analyze_history
 Proposal = _MODULE.Proposal
 AnalysisReport = _MODULE.AnalysisReport
+Proposal.model_rebuild(force=True, _types_namespace={"Any": Any})
+AnalysisReport.model_rebuild(
+    force=True,
+    _types_namespace={"Any": Any, "Proposal": Proposal},
+)

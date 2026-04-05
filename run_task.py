@@ -13,6 +13,7 @@ Usage:
     run_task.py                      # Run highest-priority pending task
     run_task.py --list               # List pending tasks
     run_task.py --dry-run [file]     # Parse and show what would run
+    run_task.py --audit-delivery-readiness [file]  # Check if a task is ready without executing it
 """
 
 import argparse
@@ -1471,13 +1472,24 @@ async def _run_graph_task(task_path: Path) -> bool:
             )
 
         # Run self-improvement analyzer
-        analysis = analyze_run(
-            report,
-            experiment_log=str(EXPERIMENT_LOG),
-            proposals_log=str(PROPOSALS_LOG),
-            floors_path=str(FLOORS_PATH),
-        )
-        if analysis.proposals:
+        try:
+            analysis = analyze_run(
+                report,
+                experiment_log=str(EXPERIMENT_LOG),
+                proposals_log=str(PROPOSALS_LOG),
+                floors_path=str(FLOORS_PATH),
+            )
+        except Exception as exc:
+            analysis = None
+            log.warning("Analyzer failed after graph execution (continuing): %s", exc)
+            _record_decision_event(
+                report_payload,
+                decision_stage="analysis",
+                selected_action="skip_failed_analyzer",
+                decision_reason=f"optional analyzer raised {type(exc).__name__}",
+                evidence_refs=["OPENCLAW_GRAPH_ANALYZER_FAILED"],
+            )
+        if analysis and analysis.proposals:
             log.info("%d improvement proposals generated:", len(analysis.proposals))
             for p in analysis.proposals:
                 log.info("  [%s] %s: %s for %s", p.risk, p.category, p.action, p.task_id)
@@ -1635,6 +1647,129 @@ def _dry_run_graph(task_path: Path) -> None:
                 print(f"    validators: {len(task.validators)}")
                 for v in task.validators:
                     print(f"      - {v.get('type', '?')}: {v.get('path', v.get('command', '...'))}")
+
+
+def _audit_delivery_readiness(task_path: Path) -> dict[str, Any]:
+    """Check whether one task is executable without mutating queue state."""
+
+    budget_ok, spent_today = _check_daily_budget()
+    budget_check = {
+        "passed": budget_ok,
+        "spent_today_usd": spent_today,
+        "daily_budget_usd": DAILY_BUDGET_USD,
+    }
+    task_type = "graph" if _is_graph_file(task_path) else "flat"
+    audit: dict[str, Any] = {
+        "task_file": str(task_path),
+        "task_type": task_type,
+        "ready": False,
+        "budget_check": budget_check,
+        "preflight": {
+            "passed": False,
+            "checks": [],
+            "failures": [],
+            "failure_event_codes": [],
+            "primary_failure_class": "none",
+        },
+    }
+
+    try:
+        if task_type == "graph":
+            from scripts.meta.task_graph import load_graph
+
+            graph = load_graph(task_path)
+            metadata = _graph_runtime_metadata(task_path)
+            audit["graph_id"] = graph.meta.id
+            audit["description"] = graph.meta.description
+            audit["task_count"] = len(graph.tasks)
+            audit["wave_count"] = len(graph.waves)
+            _apply_delivery_contract_metadata(
+                audit,
+                task_kind=metadata.get("task_kind"),
+                delivery_mode=metadata.get("delivery_mode"),
+                planner_lineage=metadata.get("planner_lineage"),
+            )
+            audit["preflight"] = _run_graph_preflight(graph, _load_mcp_registry())
+        else:
+            task = TaskSpec.from_file(task_path)
+            audit["task_id"] = task.id
+            audit["title"] = task.title
+            audit["agent"] = task.agent
+            audit["model"] = task.model
+            audit["project"] = task.project
+            audit["priority"] = task.priority
+            _apply_delivery_contract_metadata(
+                audit,
+                task_kind=task.task_kind,
+                delivery_mode=task.delivery_mode,
+                planner_lineage=task.planner_lineage,
+            )
+            audit["preflight"] = _run_flat_preflight(task)
+    except Exception as exc:
+        audit["preflight"] = {
+            "passed": False,
+            "checks": [],
+            "failures": [{
+                "error_code": "OPENCLAW_AUDIT_LOAD_FAILED",
+                "message": f"{type(exc).__name__}: {exc}",
+            }],
+            "failure_event_codes": ["OPENCLAW_AUDIT_LOAD_FAILED"],
+            "primary_failure_class": "composability",
+        }
+        return audit
+
+    audit["ready"] = budget_ok and bool(audit["preflight"].get("passed"))
+    return audit
+
+
+def _print_delivery_readiness_audit(audit: dict[str, Any]) -> None:
+    """Render one human-readable delivery-readiness audit."""
+
+    print(f"Ready for execution: {'YES' if audit['ready'] else 'NO'}")
+    print(f"Task file: {audit['task_file']}")
+    print(f"Task type: {audit['task_type']}")
+
+    if audit["task_type"] == "graph":
+        print(f"Graph: {audit.get('graph_id', 'unknown')}")
+        print(f"Description: {audit.get('description', '')}")
+        print(
+            f"Graph shape: {audit.get('task_count', 0)} tasks, "
+            f"{audit.get('wave_count', 0)} waves"
+        )
+    else:
+        print(f"Task: {audit.get('task_id', 'unknown')} — {audit.get('title', '')}")
+        print(f"Agent: {audit.get('agent', 'unknown')}")
+        print(f"Model: {audit.get('model') or 'MISSING'}")
+        print(f"Project: {audit.get('project', 'unknown')}")
+        print(f"Priority: {audit.get('priority', 'unknown')}")
+
+    if audit.get("task_kind"):
+        print(f"Task kind: {audit['task_kind']}")
+    if audit.get("delivery_mode"):
+        print(f"Delivery mode: {audit['delivery_mode']}")
+
+    budget_check = audit["budget_check"]
+    print(
+        "Budget check: "
+        f"{'PASS' if budget_check['passed'] else 'FAIL'} "
+        f"(spent=${budget_check['spent_today_usd']:.2f}, "
+        f"limit=${budget_check['daily_budget_usd']:.2f})"
+    )
+
+    preflight = audit["preflight"]
+    print(f"Preflight: {'PASS' if preflight.get('passed') else 'FAIL'}")
+
+    checks = preflight.get("checks") or []
+    if checks:
+        print("Checks:")
+        for check in checks:
+            print(f"  - {check.get('check', 'unknown')}: PASS")
+
+    failures = preflight.get("failures") or []
+    if failures:
+        print("Failures:")
+        for failure in failures:
+            print(f"  - {failure.get('error_code', 'UNKNOWN')}: {failure.get('message', '')}")
 
 
 # ---------------------------------------------------------------------------
