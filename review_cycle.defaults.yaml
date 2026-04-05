@@ -17,7 +17,7 @@ context_pack:
 
 agents:
   implement:
-    agent: codex
+    agent: claude-code
     # Optional explicit model override. Leave null to use difficulty routing.
     model: null
     difficulty: 3
@@ -26,21 +26,21 @@ agents:
     # Must be an agent model (codex/claude-code) — the review task writes a JSON
     # file that downstream tasks depend on. Text-only models (gpt-5.2-pro, gemini)
     # cannot write files and will fail the file_exists + json_schema validators.
-    agent: codex
-    model: codex
+    agent: claude-code
+    model: claude-code
     difficulty: 4
     mcp_servers: []
   context:
     # Must be an agent model — context_init and context_update write .md files
     # to ~/.openclaw/workspace/review-cycles/. Text models cannot satisfy
     # file_exists validators.
-    agent: codex
-    model: codex
+    agent: claude-code
+    model: claude-code
     difficulty: 2
     mcp_servers: []
   synthesis:
-    agent: codex
-    model: codex
+    agent: claude-code
+    model: claude-code
     difficulty: 2
     mcp_servers: []
 
