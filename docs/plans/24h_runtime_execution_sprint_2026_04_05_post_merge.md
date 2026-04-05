@@ -322,3 +322,25 @@ Post-proof branch verification:
 
 - `python -m pytest -q tests/test_run_task_reports.py tests/test_run_task_review_gate.py`
 - `python -m pytest -q tests/test_runtime_bootstrap_imports.py tests/test_run_task_delivery_audit.py tests/test_run_task_reports.py tests/test_task_planner_delivery_modes.py`
+
+## 2026-04-05 07:19 PT - Phase 7 Mainline Merge Complete
+
+Phase 7 is complete.
+
+Final merge and verification:
+
+- Plan #3 branch merged through dedicated integration worktree
+  `merge-plan3-main-20260405`
+- merged mainline commit pushed to `openclaw/main`:
+  `ac23c6b`
+- post-merge verification passed in the integration worktree:
+  - `python -m pytest -q tests/test_run_task_reports.py tests/test_run_task_review_gate.py`
+  - `python -m pytest -q tests/test_runtime_bootstrap_imports.py tests/test_run_task_delivery_audit.py tests/test_run_task_reports.py tests/test_task_planner_delivery_modes.py`
+
+Result:
+
+- the planner -> review -> commit lane remains merged on mainline
+- graph reports now surface bounded per-task `task_results` summaries in normal
+  operator reports
+- the post-merge Plan #3 proof report is complete and truthful without a debug
+  provenance sidecar
