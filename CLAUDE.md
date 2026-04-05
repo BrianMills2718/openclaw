@@ -34,3 +34,42 @@ claiming the runtime path is usable on the current host.
 - OpenClaw is an orchestration layer, not the home of repo-local governance
 - When runtime behavior changes, update tests and README in the same change
 - This repo is canonical; `$HOME/.openclaw` paths are symlinks to here
+
+## Commands
+
+```bash
+# Install/verify runtime runner
+bash install_runtime_runner.sh
+bash verify_runtime_runner.sh
+
+# Run OpenClaw task loop
+python run_task.py --loop
+
+# Generate tasks for a goal
+python task_planner.py --goal "Goal description"
+
+# Launch review cycle
+python launch_review_cycle.py
+```
+
+## Principles
+
+- OpenClaw is an orchestration layer, not the home of repo-local governance
+- Runtime behavior changes require test and README updates in the same commit
+- `$HOME/.openclaw` paths are symlinks here — this repo is canonical
+- Fail loud on runtime errors; the queue runner should surface issues, not hide them
+
+## Workflow
+
+1. Verify runtime symlink is current: `bash verify_runtime_runner.sh`
+2. Check queue: inspect `~/.openclaw/tasks/pending/`
+3. Run loop: `python run_task.py --loop`
+4. Generate new tasks: `python task_planner.py --goal "..."`
+
+## References
+
+- `run_task.py` — Queue runner entry point
+- `task_planner.py` — Goal-aware task generation
+- `launch_review_cycle.py` — Review cycle DAG launcher
+- `prompts/task_planner.yaml` — Task planner system/user prompts
+- `review_cycle.defaults.yaml` — Conservative defaults for review cycles
