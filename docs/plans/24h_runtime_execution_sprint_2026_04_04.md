@@ -161,3 +161,15 @@ If a hard stop condition occurs:
 - Dedicated worktree created
 - Plan #2 moved to in-progress state
 - Next phase: Phase A completion, then planner contract implementation
+
+### 2026-04-04T01:00:00Z
+
+- Phase A completed and committed
+- Phase B completed: planner contract now includes `task_kind`, `delivery_mode`,
+  `file_scope`, and `review_rounds`
+- Phase C implementation completed: planner now emits either flat markdown tasks
+  or review-cycle graph YAML via one deterministic writer path
+- Added planner and graph contract tests; targeted suite passed
+- Runtime workaround documented: execute `moltbot` worktrees from within
+  `~/projects/` so the current shared-import bootstrap remains valid
+- Next phase: review-pass and commit-evidence gating in `run_task.py`

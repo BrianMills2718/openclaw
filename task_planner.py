@@ -94,6 +94,8 @@ TARGET_PROJECTS = os.environ.get("OPENCLAW_MISSION_TARGET_PROJECTS", "")
 
 # Default LLM model for planning (cheap, fast)
 PLANNER_MODEL = "gemini/gemini-2.5-flash"
+TASK_KINDS = {"code_change", "docs_only", "analysis_only", "queue_maintenance"}
+DELIVERY_MODES = {"flat", "review_cycle"}
 
 
 def _normalize_target_projects(raw_targets: list[str] | str | None) -> list[Path] | None:
@@ -339,6 +341,158 @@ def run_hygiene_sweep(target_projects: list[Path] | None = None) -> str:
     return f"{len(lines)}/{result.projects_scanned} projects have issues{scope}:\n" + "\n".join(lines)
 
 
+def _planner_task_id(task: dict[str, Any], created_at: datetime) -> str:
+    """Return the deterministic queue task id for one planner-emitted task."""
+
+    return f"planner-{created_at.strftime('%Y-%m-%d')}-{task['id']}"
+
+
+def _coerce_file_scope(raw_scope: Any) -> list[str]:
+    """Normalize optional planner file scope to a clean string list."""
+
+    if raw_scope is None:
+        return []
+    if isinstance(raw_scope, str):
+        normalized = raw_scope.strip()
+        return [normalized] if normalized else []
+    if isinstance(raw_scope, list):
+        return [str(item).strip() for item in raw_scope if str(item).strip()]
+    raise ValueError(f"file_scope must be a list of strings or null, got {type(raw_scope).__name__}")
+
+
+def _validate_generated_task(task: dict[str, Any]) -> dict[str, Any]:
+    """Validate and normalize the planner delivery contract for one task."""
+
+    normalized = dict(task)
+    task_kind = str(normalized.get("task_kind", "")).strip()
+    delivery_mode = str(normalized.get("delivery_mode", "")).strip()
+    review_rounds = normalized.get("review_rounds")
+    file_scope = _coerce_file_scope(normalized.get("file_scope"))
+
+    if task_kind not in TASK_KINDS:
+        raise ValueError(f"task_kind must be one of {sorted(TASK_KINDS)}, got {task_kind!r}")
+    if delivery_mode not in DELIVERY_MODES:
+        raise ValueError(
+            f"delivery_mode must be one of {sorted(DELIVERY_MODES)}, got {delivery_mode!r}"
+        )
+
+    if task_kind == "code_change" and delivery_mode != "review_cycle":
+        raise ValueError("code_change tasks must use delivery_mode=review_cycle")
+    if task_kind != "code_change" and delivery_mode != "flat":
+        raise ValueError(f"{task_kind} tasks must use delivery_mode=flat")
+
+    if delivery_mode == "review_cycle":
+        if not isinstance(review_rounds, int) or review_rounds < 1:
+            raise ValueError("review_cycle tasks require review_rounds >= 1")
+    elif review_rounds is not None:
+        raise ValueError("flat tasks must not define review_rounds")
+
+    normalized["task_kind"] = task_kind
+    normalized["delivery_mode"] = delivery_mode
+    normalized["file_scope"] = file_scope
+    normalized["review_rounds"] = review_rounds
+    return normalized
+
+
+def _planner_lineage(task: dict[str, Any], *, task_id: str, created_at: datetime) -> dict[str, Any]:
+    """Return planner lineage metadata embedded into queue artifacts."""
+
+    return {
+        "planner_task_id": task_id,
+        "planner_task_slug": task["id"],
+        "goal_advanced": task["goal_advanced"],
+        "generated_at": created_at.isoformat(),
+    }
+
+
+def write_flat_task_file(
+    task: dict[str, Any],
+    *,
+    task_id: str,
+    created_at: datetime,
+) -> Path:
+    """Write one planner task to the flat markdown queue format."""
+
+    PENDING_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", task_id)
+
+    frontmatter = {
+        "id": task_id,
+        "priority": task["priority"],
+        "agent": task["agent"],
+        "model": task["model"],
+        "project": task["project"],
+        "created": created_at.isoformat(),
+        "status": "pending",
+        "task_kind": task["task_kind"],
+        "delivery_mode": task["delivery_mode"],
+        "planner_lineage": _planner_lineage(task, task_id=task_id, created_at=created_at),
+        "constraints": {
+            "max_turns": task["max_turns"],
+            "max_budget_usd": task["max_budget_usd"],
+            "file_scope": task["file_scope"],
+        },
+    }
+
+    try:
+        import yaml
+        fm_str = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
+    except ImportError:
+        fm_str = json.dumps(frontmatter, indent=2)
+
+    body = f"""# {task['title']}
+
+## Objective
+{task['objective']}
+
+Advances: {task['goal_advanced']}
+
+## Acceptance Criteria
+"""
+    for criterion in task["acceptance_criteria"]:
+        body += f"- [ ] {criterion}\n"
+
+    content = f"---\n{fm_str}---\n{body}"
+    dest = PENDING_DIR / f"{safe_name}.md"
+    dest.write_text(content)
+    return dest
+
+
+def write_review_cycle_task_file(
+    task: dict[str, Any],
+    *,
+    task_id: str,
+    created_at: datetime,
+    config: dict[str, Any] | None = None,
+) -> Path:
+    """Write one planner task as a review-cycle graph YAML artifact."""
+
+    import yaml
+
+    from launch_review_cycle import _load_config, build_graph
+
+    cfg = dict(config) if config is not None else _load_config(None)
+    PENDING_DIR.mkdir(parents=True, exist_ok=True)
+    project_path = Path(task["project"]).expanduser().resolve()
+    graph = build_graph(
+        cycle_id=task_id,
+        project_path=project_path,
+        objective=task["objective"],
+        rounds=task["review_rounds"],
+        config=cfg,
+        metadata={
+            "task_kind": task["task_kind"],
+            "delivery_mode": task["delivery_mode"],
+            "review_rounds": task["review_rounds"],
+            "file_scope": task["file_scope"],
+            "planner_lineage": _planner_lineage(task, task_id=task_id, created_at=created_at),
+        },
+    )
+    dest = PENDING_DIR / f"{re.sub(r'[^a-zA-Z0-9_-]', '_', task_id)}.yaml"
+    dest.write_text(yaml.safe_dump(graph, sort_keys=False))
+    return dest
+
+
 def generate_tasks(max_tasks: int = 8) -> list[dict[str, Any]]:
     """Generate prioritized tasks by sending context to the LLM planner.
 
@@ -392,6 +546,18 @@ def generate_tasks(max_tasks: int = 8) -> list[dict[str, Any]]:
         title: str = Field(description="Concise task title")
         objective: str = Field(description="2-3 sentences on what to do")
         acceptance_criteria: list[str] = Field(description="List of testable criteria")
+        task_kind: str = Field(
+            description="code_change | docs_only | analysis_only | queue_maintenance"
+        )
+        delivery_mode: str = Field(description="flat | review_cycle")
+        file_scope: list[str] | None = Field(
+            default=None,
+            description="Optional repo-relative file or glob scope for the work",
+        )
+        review_rounds: int | None = Field(
+            default=None,
+            description="Required when delivery_mode=review_cycle; null for flat tasks",
+        )
 
     class TaskPlan(BaseModel):
         """The full plan output from the LLM."""
@@ -420,57 +586,30 @@ def generate_tasks(max_tasks: int = 8) -> list[dict[str, Any]]:
         max_budget=1.0,
     )
 
-    logger.info("Generated %d tasks (cost: $%.4f)", len(plan.tasks), meta.cost)
-    return [t.model_dump() for t in plan.tasks]
+    normalized_tasks = [_validate_generated_task(t.model_dump()) for t in plan.tasks]
+    logger.info("Generated %d tasks (cost: $%.4f)", len(normalized_tasks), meta.cost)
+    return normalized_tasks
 
 
-def write_task_file(task: dict[str, Any]) -> Path:
-    """Write a task dict as a flat task .md file in pending/.
+def write_task_file(
+    task: dict[str, Any],
+    *,
+    created_at: datetime | None = None,
+    config: dict[str, Any] | None = None,
+) -> Path:
+    """Write a planner task to the appropriate queue artifact type."""
 
-    Uses the same format that run_task.py expects: YAML frontmatter
-    with id, priority, agent, project, constraints, then markdown body.
-    """
-    PENDING_DIR.mkdir(parents=True, exist_ok=True)
-
-    task_id = f"planner-{datetime.now(timezone.utc).strftime('%Y-%m-%d')}-{task['id']}"
-    safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", task_id)
-
-    frontmatter = {
-        "id": task_id,
-        "priority": task["priority"],
-        "agent": task["agent"],
-        "model": task["model"],
-        "project": task["project"],
-        "created": datetime.now(timezone.utc).isoformat(),
-        "status": "pending",
-        "constraints": {
-            "max_turns": task["max_turns"],
-            "max_budget_usd": task["max_budget_usd"],
-        },
-    }
-
-    try:
-        import yaml
-        fm_str = yaml.dump(frontmatter, default_flow_style=False, sort_keys=False)
-    except ImportError:
-        fm_str = json.dumps(frontmatter, indent=2)
-
-    body = f"""# {task['title']}
-
-## Objective
-{task['objective']}
-
-Advances: {task['goal_advanced']}
-
-## Acceptance Criteria
-"""
-    for criterion in task["acceptance_criteria"]:
-        body += f"- [ ] {criterion}\n"
-
-    content = f"---\n{fm_str}---\n{body}"
-    dest = PENDING_DIR / f"{safe_name}.md"
-    dest.write_text(content)
-    return dest
+    normalized = _validate_generated_task(task)
+    timestamp = created_at or datetime.now(timezone.utc)
+    task_id = _planner_task_id(normalized, timestamp)
+    if normalized["delivery_mode"] == "flat":
+        return write_flat_task_file(normalized, task_id=task_id, created_at=timestamp)
+    return write_review_cycle_task_file(
+        normalized,
+        task_id=task_id,
+        created_at=timestamp,
+        config=config,
+    )
 
 
 def main() -> None:

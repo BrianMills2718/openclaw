@@ -46,3 +46,14 @@ recoverable, and only when either:
   plus post-validation support success
 
 Keep the rule narrow; do not widen it to arbitrary runtime exceptions.
+
+### 2026-04-04 — codex — workaround
+
+`run_task.py` currently bootstraps `scripts.meta.*` imports by prepending
+`Path(__file__).resolve().parent.parent.parent` to `sys.path`. That means
+`moltbot` worktrees must live under `~/projects/...` if they need the shared
+`project-meta/scripts/meta` modules to resolve correctly during runtime
+execution. A worktree under `/home/brian/worktrees/...` breaks that assumption.
+
+Until the bootstrap logic is made path-agnostic, keep `moltbot` worktrees under
+`~/projects/` when executing the runtime from a worktree.

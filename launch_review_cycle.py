@@ -242,10 +242,13 @@ def build_graph(
     objective: str,
     rounds: int,
     config: dict[str, Any],
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a YAML task graph for an implementation-review cycle."""
     ws_dir = Path(str(config["workspace_dir"]).replace("~", str(Path.home()))).resolve()
     cycle_dir = ws_dir / cycle_id
+    final_review_json = cycle_dir / f"round_{rounds}" / "review.json"
+    final_report = cycle_dir / "final_decision.md"
 
     graph: dict[str, Any] = {
         "graph": {
@@ -255,7 +258,15 @@ def build_graph(
             "checkpoint": config["cycle"]["checkpoint"],
         },
         "tasks": {},
+        "metadata": {
+            "target_repo_path": str(project_path),
+            "review_rounds": rounds,
+            "final_review_json": str(final_review_json),
+            "final_report": str(final_report),
+        },
     }
+    if metadata:
+        graph["metadata"].update(metadata)
 
     impl_cfg = config["agents"]["implement"]
     review_cfg = config["agents"]["review"]
@@ -409,7 +420,6 @@ def build_graph(
 
         last_review_task = review_task
 
-    final_report = cycle_dir / "final_decision.md"
     synth_task = "synthesize"
     synth_entry: dict[str, Any] = {
         "difficulty": int(synth_cfg["difficulty"]),
