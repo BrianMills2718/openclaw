@@ -245,3 +245,24 @@ Current safe rule:
   exposes `module/__init__.py` or `module.py`
 - repo-root presence alone is not enough in a repo-that-contains-a-package
   layout
+
+### 2026-04-04 — codex — integration-issue
+
+The remaining `python run_task.py <graph>` divergence turned out to be import
+order inside `_run_graph_task(...)`, not generic `sys.path` corruption.
+
+Measured repro:
+- runtime launched with an approved llm_client worktree first on `PYTHONPATH`
+- `_run_graph_task(...)` imported `scripts.meta.analyzer` before the local
+  `scripts.meta.task_graph` shim
+- that analyzer import resolved canonical `~/projects/llm_client` first and
+  pinned it in `sys.modules`
+- later task-graph bootstrap moved the worktree root to the front of
+  `sys.path`, but it was too late because `llm_client` was already loaded
+
+Current safe rule:
+- import `scripts.meta.task_graph` before `scripts.meta.analyzer` in the graph
+  runner path
+- once the shim has loaded the intended llm_client module, later analyzer
+  imports will reuse that same module instead of reintroducing the canonical
+  repo

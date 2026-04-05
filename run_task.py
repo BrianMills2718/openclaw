@@ -19,6 +19,7 @@ Usage:
 import argparse
 import asyncio
 import fcntl
+import importlib
 import json
 import logging
 import os
@@ -34,6 +35,31 @@ from typing import Any
 import yaml
 
 
+def _module_facade_exists(root: Path, module_name: str) -> bool:
+    """Return True when a root exposes a concrete importable module facade."""
+
+    package_dir = root / module_name
+    return (package_dir / "__init__.py").is_file() or (root / f"{module_name}.py").is_file()
+
+
+def _pythonpath_module_root(module_name: str) -> Path | None:
+    """Return the first PYTHONPATH entry that exposes the requested module facade."""
+
+    raw_pythonpath = os.environ.get("PYTHONPATH", "")
+    if not raw_pythonpath:
+        return None
+    for entry in raw_pythonpath.split(os.pathsep):
+        if not entry:
+            continue
+        try:
+            root = Path(entry).expanduser().resolve()
+        except OSError:
+            continue
+        if root.is_dir() and _module_facade_exists(root, module_name):
+            return root
+    return None
+
+
 def _module_root_already_present(module_name: str) -> bool:
     """Return True when an earlier sys.path entry already exposes the module root."""
 
@@ -44,8 +70,7 @@ def _module_root_already_present(module_name: str) -> bool:
             continue
         if not root.exists() or not root.is_dir():
             continue
-        package_dir = root / module_name
-        if (package_dir / "__init__.py").is_file() or (root / f"{module_name}.py").is_file():
+        if _module_facade_exists(root, module_name):
             return True
     return False
 
@@ -55,8 +80,16 @@ def _prepend_repo_root_if_present(path: Path, *, module_name: str | None = None)
 
     if not path.is_dir():
         return
-    if module_name and _module_root_already_present(module_name):
-        return
+    if module_name:
+        preferred_root = _pythonpath_module_root(module_name)
+        if preferred_root is not None:
+            preferred = str(preferred_root)
+            if preferred in sys.path:
+                sys.path.remove(preferred)
+            sys.path.insert(0, preferred)
+            return
+        if _module_root_already_present(module_name):
+            return
     resolved = str(path.resolve())
     if resolved not in sys.path:
         sys.path.insert(0, resolved)
@@ -137,6 +170,7 @@ REPORTS_DIR = Path(os.environ.get(
     "OPENCLAW_REPORTS_DIR",
     TASKS_DIR / "reports",
 ))
+DEBUG_RUNTIME_PROVENANCE = os.environ.get("OPENCLAW_DEBUG_RUNTIME_PROVENANCE")
 
 PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 
@@ -146,6 +180,68 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("run_task")
+
+
+def _runtime_provenance_snapshot() -> dict[str, Any]:
+    """Collect import/runtime provenance for debugging script-entrypoint drift."""
+
+    snapshot: dict[str, Any] = {
+        "cwd": os.getcwd(),
+        "pid": os.getpid(),
+        "python": sys.executable,
+        "sys_path_head": sys.path[:8],
+        "env": {
+            "LLM_CLIENT_CODEX_TRANSPORT": os.environ.get("LLM_CLIENT_CODEX_TRANSPORT"),
+            "LLM_CLIENT_TIMEOUT_POLICY": os.environ.get("LLM_CLIENT_TIMEOUT_POLICY"),
+            "PYTHONPATH": os.environ.get("PYTHONPATH"),
+        },
+    }
+    try:
+        import llm_client  # type: ignore
+
+        snapshot["llm_client_file"] = getattr(llm_client, "__file__", None)
+    except Exception as exc:
+        snapshot["llm_client_import_error"] = f"{type(exc).__name__}: {exc}"
+
+    try:
+        import llm_client.sdk.agents as agents  # type: ignore
+
+        snapshot["agents_file"] = getattr(agents, "__file__", None)
+        snapshot["codex_transport_resolved"] = agents._codex_transport({})
+    except Exception as exc:
+        snapshot["agents_import_error"] = f"{type(exc).__name__}: {exc}"
+
+    try:
+        import llm_client.sdk.agents_codex as agents_codex  # type: ignore
+
+        snapshot["agents_codex_file"] = getattr(agents_codex, "__file__", None)
+        snapshot["agents_codex_has_subprocess"] = hasattr(agents_codex, "subprocess")
+        snapshot["agents_codex_call_cli_file"] = getattr(
+            getattr(agents_codex, "_call_codex_via_cli", None),
+            "__code__",
+            None,
+        ).co_filename if getattr(agents_codex, "_call_codex_via_cli", None) else None
+    except Exception as exc:
+        snapshot["agents_codex_import_error"] = f"{type(exc).__name__}: {exc}"
+
+    return snapshot
+
+
+def _write_runtime_provenance(event: str, **payload: Any) -> None:
+    """Append runtime provenance records when debug logging is enabled."""
+
+    if not DEBUG_RUNTIME_PROVENANCE:
+        return
+    path = Path(DEBUG_RUNTIME_PROVENANCE).expanduser()
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event": event,
+        **_runtime_provenance_snapshot(),
+        **payload,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True, default=str) + "\n")
 
 
 # ---------------------------------------------------------------------------
@@ -1459,10 +1555,22 @@ def _run_supervisor_loop(
 # ---------------------------------------------------------------------------
 
 
+def _load_graph_runtime_modules() -> tuple[Any, Any, Any, Any]:
+    """Import graph runtime modules in the order that preserves worktree overrides."""
+
+    task_graph_module = importlib.import_module("scripts.meta.task_graph")
+    analyzer_module = importlib.import_module("scripts.meta.analyzer")
+    return (
+        analyzer_module.analyze_run,
+        task_graph_module.ExecutionReport,
+        task_graph_module.load_graph,
+        task_graph_module.run_graph,
+    )
+
+
 async def _run_graph_task(task_path: Path) -> bool:
     """Execute a YAML task graph via llm_client.task_graph."""
-    from scripts.meta.analyzer import analyze_run
-    from scripts.meta.task_graph import ExecutionReport, load_graph, run_graph
+    analyze_run, ExecutionReport, load_graph, run_graph = _load_graph_runtime_modules()
 
     graph_ref = task_path.stem
     graph_metadata = _graph_runtime_metadata(task_path)
@@ -1515,6 +1623,12 @@ async def _run_graph_task(task_path: Path) -> bool:
         graph = load_graph(active_path)
         graph_ref = graph.meta.id
         report_payload["graph_id"] = graph_ref
+        _write_runtime_provenance(
+            "graph_loaded",
+            graph_id=graph_ref,
+            task_file=str(active_path),
+            delivery_mode=graph_metadata.get("delivery_mode"),
+        )
         log.info("=== Running task graph: %s (%d tasks, %d waves) ===",
                  graph.meta.id, len(graph.tasks), len(graph.waves))
 
@@ -1552,6 +1666,12 @@ async def _run_graph_task(task_path: Path) -> bool:
             graph,
             mcp_server_configs=mcp_configs,
             experiment_log=str(EXPERIMENT_LOG),
+        )
+        _write_runtime_provenance(
+            "graph_finished",
+            graph_id=graph.meta.id,
+            report_status=report.status,
+            task_results=[tr.model_dump() for tr in report.task_results],
         )
 
         # Log per-task costs to OpenClaw cost_log
@@ -1685,6 +1805,11 @@ async def _run_graph_task(task_path: Path) -> bool:
 
     except Exception as e:
         import traceback
+        _write_runtime_provenance(
+            "graph_exception",
+            graph_id=graph_ref,
+            error=f"{type(e).__name__}: {e}",
+        )
         log.error("Graph execution failed: %s: %s\n%s",
                   type(e).__name__, e, traceback.format_exc())
         _move_task(active_path, "failed")

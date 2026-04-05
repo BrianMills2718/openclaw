@@ -21,6 +21,31 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _module_facade_exists(root: Path, module_name: str) -> bool:
+    """Return True when a root exposes a concrete importable module facade."""
+
+    package_dir = root / module_name
+    return (package_dir / "__init__.py").is_file() or (root / f"{module_name}.py").is_file()
+
+
+def _pythonpath_module_root(module_name: str) -> Path | None:
+    """Return the first PYTHONPATH entry that exposes the requested module facade."""
+
+    raw_pythonpath = os.environ.get("PYTHONPATH", "")
+    if not raw_pythonpath:
+        return None
+    for entry in raw_pythonpath.split(os.pathsep):
+        if not entry:
+            continue
+        try:
+            root = Path(entry).expanduser().resolve()
+        except OSError:
+            continue
+        if root.is_dir() and _module_facade_exists(root, module_name):
+            return root
+    return None
+
+
 def _module_root_already_present(module_name: str) -> bool:
     """Return True when an earlier sys.path entry already exposes the module root."""
 
@@ -31,8 +56,7 @@ def _module_root_already_present(module_name: str) -> bool:
             continue
         if not root.exists() or not root.is_dir():
             continue
-        package_dir = root / module_name
-        if (package_dir / "__init__.py").is_file() or (root / f"{module_name}.py").is_file():
+        if _module_facade_exists(root, module_name):
             return True
     return False
 
@@ -42,8 +66,16 @@ def _prepend_repo_root_if_present(path: Path, *, module_name: str | None = None)
 
     if not path.is_dir():
         return
-    if module_name and _module_root_already_present(module_name):
-        return
+    if module_name:
+        preferred_root = _pythonpath_module_root(module_name)
+        if preferred_root is not None:
+            preferred = str(preferred_root)
+            if preferred in sys.path:
+                sys.path.remove(preferred)
+            sys.path.insert(0, preferred)
+            return
+        if _module_root_already_present(module_name):
+            return
     resolved = str(path.resolve())
     if resolved not in sys.path:
         sys.path.insert(0, resolved)

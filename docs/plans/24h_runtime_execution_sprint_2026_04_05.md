@@ -22,6 +22,11 @@
   the successful in-process path
 - The divergence is specific to the script-entrypoint runner path, not to the
   planner contract, review graph shape, or direct `acall_llm(...)` viability
+- Exact root cause identified: `_run_graph_task(...)` imported
+  `scripts.meta.analyzer` before the local `scripts.meta.task_graph` shim. That
+  analyzer import pulled canonical `~/projects/llm_client` into `sys.modules`
+  before the shim could promote the approved llm_client worktree override, so
+  later graph execution stayed pinned to the stale Codex transport module.
 
 ## Hard Stop Conditions
 
@@ -168,3 +173,56 @@ artifact paths, no stale-output contamination, and final gated completion.
 3. The long-term truthful default may still be `auto` if the llm_client
    fallback path is repaired, but the short-term truthful default may need to
    be explicit CLI transport until then
+
+## 2026-04-04 21:05 PT - Exact Entrypoint Divergence Isolated
+
+Deterministic repro now exists for the remaining script-entrypoint import drift.
+
+- Baseline setup that reproduces the bug:
+  `PYTHONPATH=<llm_client-worktree>:$PYTHONPATH python run_task.py <graph>`
+- If `_run_graph_task(...)` imports `scripts.meta.analyzer` first, that module
+  resolves canonical `~/projects/llm_client` before the local
+  `scripts.meta.task_graph` shim runs its bootstrap
+- Once canonical `llm_client` is in `sys.modules`, the later shim import order
+  no longer matters and the runtime remains pinned to the stale
+  `agents_codex.py` without `subprocess`
+- Importing `scripts.meta.task_graph` first reproduces the successful path:
+  the worktree override becomes the loaded `llm_client`, and later analyzer
+  imports reuse that already-loaded module
+
+Immediate action:
+
+- make graph runtime imports explicit and ordered (`task_graph` before
+  `analyzer`)
+- add regression coverage for the import-order boundary
+- rerun the targeted bootstrap suite and the real script-entrypoint proof
+
+## 2026-04-04 21:12 PT - Real Entrypoint Proof Completed Truthfully
+
+The script-entrypoint path now completes the full review-cycle graph under the
+approved llm_client worktree override.
+
+Verified evidence:
+
+- targeted regression suite passed:
+  `python -m pytest -q tests/test_runtime_bootstrap_imports.py tests/test_run_task_delivery_audit.py tests/test_run_task_reports.py tests/test_task_planner_delivery_modes.py`
+- real runner command completed:
+  `PYTHONPATH=<llm_client-worktree>:$PYTHONPATH LLM_CLIENT_CODEX_TRANSPORT=cli OPENCLAW_DEBUG_RUNTIME_PROVENANCE=<path> OPENCLAW_TASKS_DIR=/tmp/openclaw-proof-cli-fresh python run_task.py <graph>`
+- provenance now shows the correct imported modules:
+  - `llm_client_file = <llm_client-worktree>/llm_client/__init__.py`
+  - `agents_codex_file = <llm_client-worktree>/llm_client/sdk/agents_codex.py`
+  - `agents_codex_has_subprocess = true`
+- report `/tmp/openclaw-proof-cli-fresh/reports/planner-2026-04-05-add-planner-lineage-to-audit-fresh_20260405T041202Z.json`
+  recorded:
+  - `status = completed`
+  - `destination = completed`
+  - `review_gate.passed = true`
+  - `commit_evidence.passed = true`
+  - `commit_evidence.commit_sha = 49a738f2a44fff3ca4dfb7cf57b8f73465bd1648`
+
+Remaining gaps before declaring the overnight slice fully closed:
+
+- rerun one genuinely fresh graph id with fresh artifact paths, not only a
+  replayed historical proof id
+- decide whether the operator-truthful default should remain `auto` or be
+  hardened to explicit `cli` for review-cycle runs when `TIMEOUT_POLICY=ban`
