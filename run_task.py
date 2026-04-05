@@ -192,6 +192,50 @@ def _load_mcp_registry() -> dict[str, dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
+def _nonempty_text(value: Any) -> str | None:
+    """Return stripped text when a metadata field is a non-empty string."""
+
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _normalized_timestamp_text(value: Any) -> str | None:
+    """Normalize YAML timestamps to stable ISO text for audit/report payloads."""
+
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return _nonempty_text(value)
+
+
+def _yaml_scalar_text(value: Any) -> str:
+    """Render YAML scalars to stable text for runtime metadata fields."""
+
+    normalized_timestamp = _normalized_timestamp_text(value)
+    if normalized_timestamp is not None:
+        return normalized_timestamp
+    return "" if value is None else str(value)
+
+
+def _normalize_planner_lineage(value: Any) -> dict[str, Any] | None:
+    """Normalize planner lineage metadata loaded from YAML."""
+
+    if not isinstance(value, dict) or not value:
+        return None
+
+    normalized = dict(value)
+    planner_task_id = _nonempty_text(normalized.get("planner_task_id"))
+    if planner_task_id is not None:
+        normalized["planner_task_id"] = planner_task_id
+
+    generated_at = _normalized_timestamp_text(normalized.get("generated_at"))
+    if generated_at is not None:
+        normalized["generated_at"] = generated_at
+
+    return normalized
+
+
 @dataclass
 class TaskConstraints:
     """Budget and scope constraints for a single task."""
@@ -248,7 +292,7 @@ class TaskSpec:
             priority=meta.get("priority", "medium"),
             agent=agent,
             project=str(meta["project"]).replace("~", str(Path.home())),
-            created=str(meta.get("created", "")),
+            created=_yaml_scalar_text(meta.get("created", "")),
             status=meta.get("status", "pending"),
             constraints=TaskConstraints(
                 max_turns=constraints_raw.get("max_turns", 30),
@@ -265,7 +309,7 @@ class TaskSpec:
             reasoning_effort=meta.get("reasoning_effort"),
             task_kind=meta.get("task_kind"),
             delivery_mode=meta.get("delivery_mode"),
-            planner_lineage=meta.get("planner_lineage"),
+            planner_lineage=_normalize_planner_lineage(meta.get("planner_lineage")),
         )
 
     def sort_key(self) -> tuple[int, str]:
@@ -602,8 +646,9 @@ def _apply_delivery_contract_metadata(
         report_payload["task_kind"] = task_kind
     if delivery_mode:
         report_payload["delivery_mode"] = delivery_mode
-    if isinstance(planner_lineage, dict) and planner_lineage:
-        report_payload["planner_lineage"] = planner_lineage
+    normalized_planner_lineage = _normalize_planner_lineage(planner_lineage)
+    if normalized_planner_lineage:
+        report_payload["planner_lineage"] = normalized_planner_lineage
 
 
 def _graph_runtime_metadata(task_path: Path) -> dict[str, Any]:
@@ -1787,14 +1832,14 @@ def _print_delivery_readiness_audit(audit: dict[str, Any]) -> None:
             f"Graph shape: {audit.get('task_count', 0)} tasks, "
             f"{audit.get('wave_count', 0)} waves"
         )
-        _print_planner_lineage(planner_task_id, planner_generated_at)
     else:
         print(f"Task: {audit.get('task_id', 'unknown')} — {audit.get('title', '')}")
         print(f"Agent: {audit.get('agent', 'unknown')}")
         print(f"Model: {audit.get('model') or 'MISSING'}")
         print(f"Project: {audit.get('project', 'unknown')}")
         print(f"Priority: {audit.get('priority', 'unknown')}")
-        _print_planner_lineage(planner_task_id, planner_generated_at)
+
+    _print_planner_lineage(planner_task_id, planner_generated_at)
 
     if audit.get("task_kind"):
         print(f"Task kind: {audit['task_kind']}")
@@ -1832,12 +1877,8 @@ def _planner_lineage_fields(audit: dict[str, Any]) -> tuple[str | None, str | No
     planner_generated_at: str | None = None
     planner_lineage = audit.get("planner_lineage")
     if isinstance(planner_lineage, dict):
-        raw_task_id = planner_lineage.get("planner_task_id")
-        raw_generated_at = planner_lineage.get("generated_at")
-        if isinstance(raw_task_id, str) and raw_task_id:
-            planner_task_id = raw_task_id
-        if isinstance(raw_generated_at, str) and raw_generated_at:
-            planner_generated_at = raw_generated_at
+        planner_task_id = _nonempty_text(planner_lineage.get("planner_task_id"))
+        planner_generated_at = _normalized_timestamp_text(planner_lineage.get("generated_at"))
 
     if not planner_task_id:
         fallback_id = audit.get("task_id") if audit.get("task_type") == "flat" else audit.get("graph_id")
@@ -1845,9 +1886,7 @@ def _planner_lineage_fields(audit: dict[str, Any]) -> tuple[str | None, str | No
             planner_task_id = fallback_id
 
     if not planner_generated_at and audit.get("task_type") == "flat":
-        fallback_created = audit.get("created")
-        if isinstance(fallback_created, str) and fallback_created:
-            planner_generated_at = fallback_created
+        planner_generated_at = _normalized_timestamp_text(audit.get("created"))
 
     return planner_task_id, planner_generated_at
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import types
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -30,7 +31,7 @@ task_kind: docs_only
 delivery_mode: flat
 planner_lineage:
   planner_task_id: planner-2026-04-04-docs-refresh
-  generated_at: "2026-04-04T10:00:00+00:00"
+  generated_at: 2026-04-04T10:00:00+00:00
 constraints:
   max_turns: 12
   max_budget_usd: 1.0
@@ -227,6 +228,33 @@ def test_print_delivery_readiness_audit_for_graph_shows_planner_lineage(
 
     output = capsys.readouterr().out
     assert "Planner task ID: planner-2026-04-04-demo-task" in output
+    assert "Generated at: 2026-04-04T12:34:56+00:00" in output
+
+
+def test_print_delivery_readiness_audit_for_graph_normalizes_datetime_lineage(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Graph audit output should normalize YAML datetime lineage values."""
+
+    run_task._print_delivery_readiness_audit(
+        {
+            "ready": True,
+            "task_file": "/tmp/graph-1.yaml",
+            "task_type": "graph",
+            "graph_id": "graph-1",
+            "description": "demo graph",
+            "task_count": 3,
+            "wave_count": 2,
+            "planner_lineage": {
+                "planner_task_id": "planner-2026-04-04-demo-task",
+                "generated_at": datetime(2026, 4, 4, 12, 34, 56, tzinfo=timezone.utc),
+            },
+            "budget_check": {"passed": True, "spent_today_usd": 0.5, "daily_budget_usd": 20.0},
+            "preflight": {"passed": True, "checks": [], "failures": [], "failure_event_codes": []},
+        }
+    )
+
+    output = capsys.readouterr().out
     assert "Generated at: 2026-04-04T12:34:56+00:00" in output
 
 
@@ -456,6 +484,43 @@ def test_main_audit_delivery_readiness_prints_planner_lineage(
             "delivery_mode": "flat",
             "budget_check": {"passed": True, "spent_today_usd": 0.0, "daily_budget_usd": 20.0},
             "preflight": {"passed": True, "checks": [], "failures": [], "failure_event_codes": []},
+        },
+    )
+    monkeypatch.setattr(
+        run_task.asyncio,
+        "run",
+        lambda coroutine: (_ for _ in ()).throw(AssertionError("task execution should not start in audit mode")),
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        run_task.main()
+
+    output = capsys.readouterr().out
+    assert excinfo.value.code == 0
+    assert "Planner task ID: planner-2026-04-04-docs-refresh" in output
+    assert "Generated at: 2026-04-04T10:00:00+00:00" in output
+
+
+def test_main_audit_delivery_readiness_loads_and_prints_flat_task_lineage(
+    monkeypatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """CLI audit mode should print lineage from the loaded flat task metadata."""
+
+    task_path = _flat_task_file(tmp_path)
+
+    monkeypatch.setattr(sys, "argv", ["run_task.py", "--audit-delivery-readiness", str(task_path)])
+    monkeypatch.setattr(run_task, "_check_daily_budget", lambda: (True, 0.0))
+    monkeypatch.setattr(
+        run_task,
+        "_run_flat_preflight",
+        lambda task: {
+            "passed": True,
+            "checks": [],
+            "failures": [],
+            "failure_event_codes": [],
+            "primary_failure_class": "none",
         },
     )
     monkeypatch.setattr(
