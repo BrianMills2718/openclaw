@@ -195,3 +195,42 @@ def test_main_audit_delivery_readiness_exits_before_task_execution(
     assert excinfo.value.code == 1
     assert printed and printed[0]["task_file"] == str(task_path)
     assert capsys.readouterr().out == ""
+
+
+def test_main_audit_delivery_readiness_exits_zero_when_ready(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """The CLI audit mode should return success when the task is ready."""
+
+    task_path = _flat_task_file(tmp_path)
+    printed: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["run_task.py", "--audit-delivery-readiness", str(task_path)],
+    )
+    monkeypatch.setattr(
+        run_task,
+        "_audit_delivery_readiness",
+        lambda path: {
+            "ready": True,
+            "task_file": str(path),
+            "task_type": "flat",
+            "budget_check": {"passed": True, "spent_today_usd": 0.0, "daily_budget_usd": 20.0},
+            "preflight": {"passed": True, "checks": [], "failures": [], "failure_event_codes": []},
+        },
+    )
+    monkeypatch.setattr(run_task, "_print_delivery_readiness_audit", lambda payload: printed.append(payload))
+    monkeypatch.setattr(
+        run_task.asyncio,
+        "run",
+        lambda coroutine: (_ for _ in ()).throw(AssertionError("task execution should not start in audit mode")),
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        run_task.main()
+
+    assert excinfo.value.code == 0
+    assert printed and printed[0]["task_file"] == str(task_path)

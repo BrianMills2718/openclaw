@@ -37,11 +37,18 @@ Runtime behavior (current):
   than introducing an OpenClaw-only policy file.
 - Operators can audit and migrate legacy flat tasks before stricter supervisor
   gating lands:
-  - `python ops/openclaw/run_task.py --audit-delivery-readiness <task-file>`
-  - `python ops/openclaw/run_task.py --scan-model-gaps`
-  - `python ops/openclaw/run_task.py --repair-flat-models`
-  - `python ops/openclaw/run_task.py --repair-flat-models --repair-default-model <model> --apply-repairs`
-  - `python ops/openclaw/run_task.py --loop --allow-legacy`
+  - `python run_task.py --audit-delivery-readiness <task-file>`
+  - `python run_task.py --scan-model-gaps`
+  - `python run_task.py --repair-flat-models`
+  - `python run_task.py --repair-flat-models --repair-default-model <model> --apply-repairs`
+  - `python run_task.py --loop --allow-legacy`
+
+Delivery-readiness audit:
+- `python run_task.py --audit-delivery-readiness <task-file>` parses the task,
+  runs the same deterministic preflight and budget checks used at execution
+  time, and prints a readiness report without moving or executing the task.
+- Exit status `0` means the task is ready to execute; exit status `1` means the
+  task is not ready and the printed audit explains why.
 
 Governance boundary:
 - OpenClaw is an orchestration layer, not the canonical home of per-repo rules.

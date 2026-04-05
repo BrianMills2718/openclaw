@@ -109,3 +109,24 @@ If `moltbot` needs to locally own `scripts.meta.*` shims, `scripts/` and
 `__init__.py` files, Python can keep resolving `scripts.meta.task_graph` to the
 external `project-meta` namespace package, which makes local shims appear to be
 ignored even when the files exist.
+
+### 2026-04-04 — codex — integration-issue
+
+The remaining review-cycle proof failure is not in `moltbot` orchestration. It
+is in the Codex SDK text-execution path used by file-writing tasks.
+
+Measured repro:
+- a trivial direct `acall_llm("codex", ...)` call succeeds
+- replaying the exact `implement_r1` prompt from the planner-generated review
+  graph fails inside `openai_codex_sdk`
+- concrete exception:
+  `ValidationError: FileChangeItem.status Input should be 'completed' or 'failed'; input was 'in_progress'`
+
+Operational consequence:
+- the graph records `model_selected="codex"` but no `resolved_model`,
+  `routing_trace`, or validator output
+- `implement_r1` fails before llm_client can finalize a normal agent result
+
+Treat this as an llm_client/Codex transport compatibility issue. The next fix
+should be a durable fallback or transport-selection change, not another
+orchestration-layer workaround in `moltbot`.

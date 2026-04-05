@@ -66,7 +66,21 @@ def _bootstrap_shared_import_roots() -> None:
     _prepend_repo_root_if_present(project_meta_root / "scripts" / "meta")
 
 
+def _bootstrap_runtime_env_defaults() -> None:
+    """Apply runtime transport defaults needed for autonomous agent execution.
+
+    OpenClaw file-writing Codex tasks are materially safer on `auto` transport:
+    with the current timeout policy (`LLM_CLIENT_TIMEOUT_POLICY=ban`), llm_client
+    routes directly to the CLI path with an enforced hard timeout, and in
+    environments where the SDK path still runs, `auto` retains the ability to
+    fall back to CLI on transport-layer failures.
+    """
+
+    os.environ.setdefault("LLM_CLIENT_CODEX_TRANSPORT", "auto")
+
+
 _bootstrap_shared_import_roots()
+_bootstrap_runtime_env_defaults()
 
 # Ensure sibling modules (spawn_extract) are importable
 sys.path.insert(0, str(Path(__file__).resolve().parent))

@@ -246,3 +246,33 @@ If a hard stop condition occurs:
 - Next phase: rerun the planner-generated proof task and isolate the remaining
   `implement_r1` workspace-agent failure from the already-fixed orchestration
   seams
+
+### 2026-04-04T08:00:00Z
+
+- The remaining proof blocker is now pinned to one concrete Codex SDK parsing
+  defect during file-writing tasks, not to `moltbot` graph orchestration
+- A trivial direct `acall_llm(\"codex\", ...)` call succeeds in this
+  environment, so the general transport path is healthy
+- Replaying the exact `implement_r1` prompt fails inside `openai_codex_sdk`
+  with:
+  `ValidationError: FileChangeItem.status Input should be 'completed' or 'failed'; input was 'in_progress'`
+- This means the next phase must patch the llm_client/Codex transport boundary
+  or opt graph tasks into a durable CLI fallback path before rerunning the full
+  proof
+
+### 2026-04-04T09:00:00Z
+
+- OpenClaw now defaults `LLM_CLIENT_CODEX_TRANSPORT=auto` inside `run_task.py`
+  unless an operator already set a transport explicitly
+- Under the current timeout policy (`LLM_CLIENT_TIMEOUT_POLICY=ban`), that
+  means Codex lanes route directly to the CLI path with a hard timeout instead
+  of re-entering the SDK parser that fails on `FileChangeItem.status="in_progress"`
+- Added runtime bootstrap tests that lock down both behaviors:
+  default to `auto`, but do not override an explicit operator transport
+- The direct implementation-lane replay also landed two truthful improvements
+  now kept in the branch:
+  - clearer README documentation for `--audit-delivery-readiness`
+  - one extra CLI success-path audit test
+- Next phase: rerun the planner-generated proof on the clean queue and confirm
+  review pass, commit evidence, and completed reporting on the CLI-backed Codex
+  path
