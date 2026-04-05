@@ -419,14 +419,19 @@ def _planner_lineage(task: dict[str, Any], *, task_id: str, created_at: datetime
 
 
 def _review_cycle_runtime_model(task: dict[str, Any]) -> str:
-    """Map planner-selected workspace agents to graph-runtime model aliases."""
+    """Return the normalized workspace-agent runtime for review-cycle tasks.
 
-    agent = str(task["agent"]).strip()
-    if agent == "claude":
-        return "claude-code"
-    if agent in {"codex", "claude-code"}:
-        return agent
-    raise ValueError(f"review_cycle tasks require workspace agents, got {agent!r}")
+    The gated planner -> review -> commit path needs one proven-good workspace
+    agent baseline. Current proof runs have shown that Codex can advance through
+    implementation and review lanes in this environment once llm_client fallback
+    issues are handled, while planner-selected Claude implementation lanes timed
+    out before producing the required artifacts. Flat tasks still honor the
+    planner-selected agent; this normalization applies only to the review-cycle
+    graph runtime.
+    """
+
+    del task
+    return "codex"
 
 
 def write_flat_task_file(
@@ -496,19 +501,20 @@ def write_review_cycle_task_file(
     from launch_review_cycle import _load_config, build_graph
 
     cfg = dict(config) if config is not None else _load_config(None)
+    runtime_agent = _review_cycle_runtime_model(task)
     cfg = {
         **cfg,
         "agents": {
             **cfg["agents"],
             "implement": {
                 **cfg["agents"]["implement"],
-                "agent": task["agent"],
-                "model": _review_cycle_runtime_model(task),
+                "agent": runtime_agent,
+                "model": runtime_agent,
             },
             "synthesis": {
                 **cfg["agents"]["synthesis"],
-                "agent": task["agent"],
-                "model": _review_cycle_runtime_model(task),
+                "agent": runtime_agent,
+                "model": runtime_agent,
             },
         },
     }

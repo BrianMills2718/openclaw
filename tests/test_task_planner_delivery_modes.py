@@ -139,11 +139,11 @@ def test_write_review_cycle_task_emits_graph_yaml_with_deterministic_id(
     assert payload["tasks"]["implement_r1"]["model"] == "codex"
 
 
-def test_write_review_cycle_task_uses_planner_selected_agent_for_impl_and_synthesis(
+def test_write_review_cycle_task_normalizes_workspace_lanes_to_codex(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """Planner-selected implementation agent/model propagate into the graph lanes."""
+    """Review-cycle graph lanes normalize to the proven Codex workspace runtime."""
 
     created_at = datetime(2026, 4, 4, 4, 5, 6, tzinfo=timezone.utc)
     queue_dir = tmp_path / "pending"
@@ -183,10 +183,10 @@ def test_write_review_cycle_task_uses_planner_selected_agent_for_impl_and_synthe
     )
 
     payload = yaml.safe_load(path.read_text())
-    assert payload["tasks"]["implement_r1"]["agent"] == "claude-code"
-    assert payload["tasks"]["implement_r1"]["model"] == "claude-code"
-    assert payload["tasks"]["synthesize"]["agent"] == "claude-code"
-    assert payload["tasks"]["synthesize"]["model"] == "claude-code"
+    assert payload["tasks"]["implement_r1"]["agent"] == "codex"
+    assert payload["tasks"]["implement_r1"]["model"] == "codex"
+    assert payload["tasks"]["synthesize"]["agent"] == "codex"
+    assert payload["tasks"]["synthesize"]["model"] == "codex"
 
 
 def test_validate_generated_task_uses_explicit_single_target_project(monkeypatch, tmp_path: Path) -> None:
