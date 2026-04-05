@@ -21,9 +21,10 @@ Runtime behavior (current):
 - Flat tasks now require explicit `model:` declarations at execution time.
 - `--loop` now refuses to start when pending or active tasks still have model
   gaps, unless operators pass `--allow-legacy`.
-- Review-cycle defaults remain intentionally conservative in this plan: the
-  default review lane stays `agent: direct` with `model: gpt-5.2-pro` unless a
-  caller overrides it with an explicit config file.
+- Review-cycle defaults use workspace agents for local file work: the default
+  review lane is `agent: codex` with no explicit model override, so the graph
+  resolves it through agent-capable difficulty routing unless a caller
+  overrides it with an explicit config file.
 - Graph tasks run deterministic preflight checks before execution (`non-empty graph`, `waves`, `MCP server configs`).
 - Review-cycle Codex tasks default to explicit CLI transport during runtime
   bootstrap. In `run_task.py`, `_bootstrap_runtime_env_defaults()` applies
