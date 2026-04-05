@@ -80,6 +80,7 @@ _git_checkpoint = _MODULE._git_checkpoint
 
 _ORIGINAL_EXECUTE_TASK = _MODULE._execute_task
 
+TaskDef.model_rebuild(force=True, _types_namespace={"Any": Any})
 TaskGraph.model_rebuild(
     force=True,
     _types_namespace={"Any": Any, "GraphMeta": GraphMeta, "TaskDef": TaskDef},
