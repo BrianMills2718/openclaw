@@ -2,20 +2,25 @@
 
 Track all implementation work here.
 
-## Active Plans
+## Gap Summary
 
 | # | Name | Priority | Status | Blocks |
 |---|------|----------|--------|--------|
-| 1 | [Example Plan](01_example.md) | Medium | Planned | - |
+| 1 | [Example Plan](01_example.md) | Medium | 📋 Planned | - |
+| 2 | [End-to-End Planner -> Review -> Commit Flow](02_end_to_end_planner_review_commit_flow.md) | High | 🚧 In Progress | - |
+
+## Active Execution Tracker
+
+- [24-Hour Runtime Sprint](24h_runtime_execution_sprint_2026_04_04.md)
 
 ## Status Key
 
 | Status | Meaning |
 |--------|---------|
-| Planned | Ready to implement |
-| In Progress | Being worked on |
-| Blocked | Waiting on dependency |
-| Complete | Implemented and verified |
+| `📋 Planned` | Ready to implement |
+| `🚧 In Progress` | Being worked on |
+| `⏸️ Blocked` | Waiting on dependency |
+| `✅ Complete` | Implemented and verified |
 
 ## Creating a New Plan
 
