@@ -36,6 +36,45 @@ claiming the runtime path is usable on the current host.
 - When runtime behavior changes, update tests and README in the same change
 - This repo is canonical; `$HOME/.openclaw` paths are symlinks to here
 
+## Commands
+
+```bash
+# Install/verify runtime runner
+bash install_runtime_runner.sh
+bash verify_runtime_runner.sh
+
+# Run OpenClaw task loop
+python run_task.py --loop
+
+# Generate tasks for a goal
+python task_planner.py --goal "Goal description"
+
+# Launch review cycle
+python launch_review_cycle.py
+```
+
+## Principles
+
+- OpenClaw is an orchestration layer, not the home of repo-local governance
+- Runtime behavior changes require test and README updates in the same commit
+- `$HOME/.openclaw` paths are symlinks here — this repo is canonical
+- Fail loud on runtime errors; the queue runner should surface issues, not hide them
+
+## Workflow
+
+1. Verify runtime symlink is current: `bash verify_runtime_runner.sh`
+2. Check queue: inspect `~/.openclaw/tasks/pending/`
+3. Run loop: `python run_task.py --loop`
+4. Generate new tasks: `python task_planner.py --goal "..."`
+
+## References
+
+- `run_task.py` — Queue runner entry point
+- `task_planner.py` — Goal-aware task generation
+- `launch_review_cycle.py` — Review cycle DAG launcher
+- `prompts/task_planner.yaml` — Task planner system/user prompts
+- `review_cycle.defaults.yaml` — Conservative defaults for review cycles
+
 ## Execution Mandates
 
 - **Worktree-only execution is mandatory between merges and pushes.**
@@ -43,49 +82,19 @@ claiming the runtime path is usable on the current host.
   session, use a dedicated branch worktree. Do not continue implementation on a
   primary checkout "just for one quick fix." If the work is worth keeping, it
   is worth isolating in a worktree first.
-- **Always use a dedicated git worktree for non-trivial implementation work.**
-  Do not make runtime changes directly on the primary checkout between merges
-  and pushes. Create a named branch worktree first, do the work there, and
-  keep the main checkout clean enough to remain a reliable integration point.
-- **Merges and post-merge follow-on work must also respect worktree isolation.**
-  Do not merge a completed branch and then keep hacking in the canonical repo.
-  Use one dedicated integration worktree for the merge/verification step, then
-  start the next implementation phase in a fresh dedicated worktree branched
-  from the updated mainline. Between pushes and merges, the canonical repo is
-  an integration target, not a scratchpad.
 - **Commit verified increments immediately and often.**
   Every completed phase or sub-phase with passing verification must be committed
   before moving on. Small, frequent commits are mandatory so the runtime can be
   reverted to the last known-good state without reconstructing work from
-  conversation history. If a proof run reveals a real fixed sub-problem, commit
-  that sub-problem before chasing the next one.
-- **When Brian says "run all night", treat that as standing authorization to
-  keep executing the active tracker until every listed phase is either complete
-  or blocked by a precisely documented external dependency.**
-  A successful proof, a green test slice, or one merged branch is not the end.
-  Update the tracker, commit, and continue into the next phase automatically.
+  conversation history.
 - **When the user authorizes continuous execution, treat the active plan as
   standing authorization to continue phase-to-phase without pausing.**
   Do not stop at a green test, a completed subtask, or a single landed commit.
   Continue until all active plan acceptance criteria are met or a real blocker
-  is reached. Overnight execution should continue phase-by-phase without
-  requesting confirmation for ordinary implementation choices already settled in
-  the active plan.
+  is reached.
 - **A blocker or uncertainty must be written down immediately and precisely.**
   Record it in the active execution tracker, implementation plan, or
-  `KNOWLEDGE.md` before changing direction. Never keep operational uncertainty
-  only in chat context, and never let a discovered blocker remain implicit.
+  `KNOWLEDGE.md` before changing direction.
 - **Never merge on vague confidence.**
   Before any merge into mainline, the active tracker must name the exact tests,
-  proof report, and residual risks that justify the merge. If a merge happens,
-  the next worktree must start from that merged state and the tracker must say
-  exactly what is being proved next.
-- **Never end a long-running session with ambiguous state.**
-  Leave either a commit that captures the verified increment or a precise note
-  explaining what remains unverified and why execution could not safely
-  continue.
-- **Do not stop just because one proof run failed.**
-  If a run fails, extract the exact failure signature, write it down, fix the
-  highest-leverage root cause in the current worktree, commit when verified, and
-  continue to the next phase. The only valid stop is a documented blocker or
-  completed acceptance criteria.
+  proof report, and residual risks that justify the merge.
