@@ -1,6 +1,6 @@
 # Round 1 Implementation
 
-This round verified the existing `run_task.py` lineage output and tightened the audit regression coverage around the exact CLI path operators use. `--audit-delivery-readiness` continues to print `Planner task ID` and `Generated at` for planner-produced work, sourcing those fields from explicit `planner_lineage` metadata and using the flat-task `created` timestamp as a fallback when planner metadata is absent but the task ID is planner-shaped. The new test exercises that behavior for a loaded graph task through `main()`, not just the formatter helper.
+This round verified that the requested `run_task.py` behavior is already present in the accepted implementation slice at `7e9c619b0724d5f2c4610466b2fc2716ca437c9c`. `--audit-delivery-readiness` prints `Planner task ID` and `Generated at` for planner-produced work, sourcing those fields from explicit `planner_lineage` metadata and using the flat-task `created` timestamp as a fallback when planner metadata is absent but the task ID is planner-shaped. The companion CLI-level graph audit test keeps that behavior covered through `main()`, not just the formatter helper.
 
 ## Changed Files
 
@@ -11,6 +11,7 @@ This round verified the existing `run_task.py` lineage output and tightened the 
 ## Tests Run
 
 - `pytest -q tests/test_run_task_delivery_audit.py`
+- `pytest -q tests/test_run_task_delivery_audit.py tests/test_run_task_reports.py`
 
 ## Residual Risks
 
