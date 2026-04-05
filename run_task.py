@@ -1194,6 +1194,34 @@ def _first_failed_graph_task_id(task_result_summaries: Any) -> str | None:
     return None
 
 
+def _failing_graph_task_waves(task_result_summaries: Any) -> dict[str, Any]:
+    """Return the bounded failing-wave summary for run-level graph triage."""
+
+    if not isinstance(task_result_summaries, list):
+        return {"count": 0, "waves": []}
+
+    failing_waves: set[int] = set()
+    for task_result in task_result_summaries:
+        if not isinstance(task_result, dict):
+            continue
+        if str(task_result.get("status") or "") != "failed":
+            continue
+        wave = task_result.get("wave")
+        if isinstance(wave, bool):
+            continue
+        try:
+            wave_index = int(wave)
+        except (TypeError, ValueError):
+            continue
+        if wave_index >= 0:
+            failing_waves.add(wave_index)
+
+    return {
+        "count": len(failing_waves),
+        "waves": sorted(failing_waves),
+    }
+
+
 def _run_flat_preflight(task: TaskSpec) -> dict[str, Any]:
     """Deterministic preflight checks for flat tasks."""
     checks: list[dict[str, Any]] = []
@@ -1936,6 +1964,7 @@ async def _run_graph_task(task_path: Path) -> bool:
         first_failed_task_id = _first_failed_graph_task_id(task_result_summaries)
         if first_failed_task_id:
             run_summary["first_failed_task_id"] = first_failed_task_id
+        run_summary["failing_task_waves"] = _failing_graph_task_waves(task_result_summaries)
         report_payload["run"] = run_summary
         report_payload["primary_failure_class"] = primary_failure_class
         report_payload["failure_event_codes"] = failure_codes

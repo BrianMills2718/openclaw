@@ -126,6 +126,7 @@ def test_graph_report_records_delivery_mode_review_gate_and_commit_evidence(
     assert reports[-1]["planner_lineage"]["planner_task_id"] == "planner-2026-04-04-demo-task"
     assert reports[-1]["review_gate"]["passed"] is True
     assert reports[-1]["commit_evidence"]["commit_sha"] == "abc123"
+    assert reports[-1]["run"]["failing_task_waves"] == {"count": 0, "waves": []}
     assert reports[-1]["task_results"][0]["task_id"] == "implement_r1"
     assert reports[-1]["task_results"][0]["status"] == "completed"
     assert reports[-1]["task_results"][0]["validation_summary"]["all_passed"] is True
@@ -195,6 +196,7 @@ def test_graph_report_exposes_failed_task_error_directly(
     assert reports[-1]["status"] == "failed"
     assert reports[-1]["run"]["graph_execution_status"] == "partial"
     assert reports[-1]["run"]["first_failed_task_id"] == "implement_r1"
+    assert reports[-1]["run"]["failing_task_waves"] == {"count": 1, "waves": [0]}
     assert reports[-1]["task_results"][0]["task_id"] == "implement_r1"
     assert reports[-1]["task_results"][0]["error"] == "validator failed: implementation.md missing"
     assert reports[-1]["task_results"][0]["validation_summary"]["failure_refs"] == [

@@ -90,6 +90,27 @@
             "string",
             "null"
           ]
+        },
+        "failing_task_waves": {
+          "type": "object",
+          "required": [
+            "count",
+            "waves"
+          ],
+          "properties": {
+            "count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "waves": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": true
