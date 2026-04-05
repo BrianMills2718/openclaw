@@ -276,3 +276,17 @@ If a hard stop condition occurs:
 - Next phase: rerun the planner-generated proof on the clean queue and confirm
   review pass, commit evidence, and completed reporting on the CLI-backed Codex
   path
+
+### 2026-04-04T10:00:00Z
+
+- A fresh planner-generated proof task exposed one more deterministic contract
+  bug before execution:
+  the planner emitted a hallucinated nested repo path ending in `/openclaw`
+  instead of the explicitly targeted worktree root
+- Fixed the planner boundary so a single explicit `--target-project` now
+  normalizes generated tasks to that exact repo path
+- Fixed graph preflight so missing task `working_directory` paths fail the
+  readiness audit with `OPENCLAW_PREFLIGHT_WORKDIR_MISSING`
+- Added regression tests for both contracts
+- Next phase: regenerate the proof graph using the corrected planner boundary,
+  audit it, and run the full planner -> review -> commit path again

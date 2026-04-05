@@ -134,6 +134,43 @@ def test_audit_delivery_readiness_for_graph_reports_ready_state(
     assert audit["preflight"]["passed"] is True
 
 
+def test_audit_delivery_readiness_for_graph_fails_when_workdir_missing(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Graph audits should fail before execution when a task working directory is missing."""
+
+    task_graph_module = types.ModuleType("scripts.meta.task_graph")
+    task_graph_module.load_graph = lambda path: SimpleNamespace(
+        meta=SimpleNamespace(id="graph-1", description="demo graph"),
+        tasks={
+            "implement_r1": SimpleNamespace(mcp_servers=[], working_directory=str(tmp_path / "missing-repo")),
+        },
+        waves=[["implement_r1"]],
+    )
+    monkeypatch.setitem(sys.modules, "scripts.meta.task_graph", task_graph_module)
+    monkeypatch.setattr(run_task, "_check_daily_budget", lambda: (True, 0.5))
+    monkeypatch.setattr(run_task, "_load_mcp_registry", lambda: {})
+
+    task_path = tmp_path / "graph-1.yaml"
+    task_path.write_text(
+        yaml.safe_dump(
+            {
+                "graph": {"id": "graph-1", "description": "demo", "timeout_minutes": 30, "checkpoint": "none"},
+                "tasks": {"implement_r1": {}},
+                "metadata": {"delivery_mode": "review_cycle", "task_kind": "code_change"},
+            },
+            sort_keys=False,
+        )
+    )
+
+    audit = run_task._audit_delivery_readiness(task_path)
+
+    assert audit["ready"] is False
+    assert audit["preflight"]["passed"] is False
+    assert audit["preflight"]["failure_event_codes"] == ["OPENCLAW_PREFLIGHT_WORKDIR_MISSING"]
+
+
 def test_audit_delivery_readiness_reports_load_failures_without_throwing(
     monkeypatch,
     tmp_path: Path,

@@ -52,9 +52,12 @@ def test_write_flat_task_keeps_existing_markdown_format(tmp_path: Path, monkeypa
     """Flat tasks remain markdown frontmatter tasks consumable by run_task."""
 
     created_at = datetime(2026, 4, 4, 1, 2, 3, tzinfo=timezone.utc)
+    project_dir = tmp_path / "repo"
+    project_dir.mkdir()
     task = task_planner._validate_generated_task(
         _base_task(
             id="docs-refresh",
+            project=str(project_dir),
             task_kind="docs_only",
             delivery_mode="flat",
             file_scope=["README.md"],
@@ -184,3 +187,31 @@ def test_write_review_cycle_task_uses_planner_selected_agent_for_impl_and_synthe
     assert payload["tasks"]["implement_r1"]["model"] == "claude-code"
     assert payload["tasks"]["synthesize"]["agent"] == "claude-code"
     assert payload["tasks"]["synthesize"]["model"] == "claude-code"
+
+
+def test_validate_generated_task_uses_explicit_single_target_project(monkeypatch, tmp_path: Path) -> None:
+    """A single explicit target project should override planner project drift."""
+
+    target = tmp_path / "repo"
+    target.mkdir()
+    monkeypatch.setattr(task_planner, "TARGET_PROJECTS", str(target))
+
+    normalized = task_planner._validate_generated_task(
+        _base_task(project=str(target / "openclaw"))
+    )
+
+    assert normalized["project"] == str(target.resolve())
+
+
+def test_validate_generated_task_rejects_missing_project_path(monkeypatch, tmp_path: Path) -> None:
+    """Planner output should not be allowed to reference nonexistent repos."""
+
+    monkeypatch.setattr(task_planner, "TARGET_PROJECTS", "")
+    missing = tmp_path / "missing-repo"
+
+    try:
+        task_planner._validate_generated_task(_base_task(project=str(missing)))
+    except ValueError as exc:
+        assert "planner task project path does not exist" in str(exc)
+    else:
+        raise AssertionError("expected nonexistent planner project path to be rejected")

@@ -391,6 +391,19 @@ def _validate_generated_task(task: dict[str, Any]) -> dict[str, Any]:
     normalized["delivery_mode"] = delivery_mode
     normalized["file_scope"] = file_scope
     normalized["review_rounds"] = review_rounds
+    targets = _get_target_projects()
+    if targets and len(targets) == 1:
+        normalized["project"] = str(targets[0])
+    else:
+        project_path = Path(str(normalized.get("project", ""))).expanduser().resolve()
+        if targets and all(project_path != target for target in targets):
+            raise ValueError(
+                "planner task project must match one of the explicit target projects, "
+                f"got {project_path}"
+            )
+        if not project_path.is_dir():
+            raise ValueError(f"planner task project path does not exist: {project_path}")
+        normalized["project"] = str(project_path)
     return normalized
 
 

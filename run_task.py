@@ -997,6 +997,23 @@ def _run_graph_preflight(graph: Any, mcp_configs: dict[str, dict[str, Any]]) -> 
     else:
         checks.append({"check": "graph_mcp_servers_configured", "passed": True})
 
+    missing_workdirs: list[str] = []
+    for task_id, task in graph.tasks.items():
+        raw_workdir = getattr(task, "working_directory", None)
+        if not isinstance(raw_workdir, str) or not raw_workdir.strip():
+            continue
+        workdir = Path(raw_workdir).expanduser().resolve()
+        if not workdir.is_dir():
+            missing_workdirs.append(f"{task_id}={workdir}")
+    if missing_workdirs:
+        failures.append({
+            "error_code": "OPENCLAW_PREFLIGHT_WORKDIR_MISSING",
+            "message": "Missing task working directory/directories: "
+            + ", ".join(sorted(missing_workdirs)),
+        })
+    else:
+        checks.append({"check": "graph_workdirs_exist", "passed": True})
+
     passed = len(failures) == 0
     return {
         "passed": passed,

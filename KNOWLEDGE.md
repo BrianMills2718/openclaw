@@ -130,3 +130,23 @@ Operational consequence:
 Treat this as an llm_client/Codex transport compatibility issue. The next fix
 should be a durable fallback or transport-selection change, not another
 orchestration-layer workaround in `moltbot`.
+
+### 2026-04-04 — codex — bug-pattern
+
+Planner-generated review-cycle graphs can still be deterministically wrong even
+when the planner emits the correct `delivery_mode`.
+
+Measured failure:
+- planner was explicitly scoped to one target worktree
+- generated graph still used a hallucinated nested repo path ending in
+  `/openclaw`
+- the readiness audit originally passed because graph preflight did not verify
+  task `working_directory` paths
+
+Current safe rule:
+- when planning is explicitly scoped to one target repo, normalize generated
+  task `project` paths to that exact repo root
+- graph preflight must fail if any declared `working_directory` is missing
+
+That keeps planner drift from silently entering the queue and makes
+`--audit-delivery-readiness` a truthful gate for this class of bug.
