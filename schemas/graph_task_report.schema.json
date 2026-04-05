@@ -84,6 +84,12 @@
         "task_results_count": {
           "type": "integer",
           "minimum": 0
+        },
+        "first_failed_task_id": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "additionalProperties": true

@@ -325,3 +325,24 @@ Current safe rule:
 - when a canonical shared-infra checkout has unrelated local drift, point real
   proofs at the verified merged integration worktree path until the canonical
   checkout is separately reconciled
+
+### 2026-04-05 — codex — bug-pattern
+
+For graph-task reports, `ExecutionReport.status` from `task_graph.py` is not the
+same thing as the final operator-facing report status.
+
+Measured failure:
+- a live planner-generated proof task that hit a real review rejection exposed
+  that the failure-path unit test had been modeled with synthetic
+  `ExecutionReport.status="failed"`
+- the real graph runner uses `ExecutionReport.status="partial"` for any
+  mid-graph failure after work has started
+- if `run_task.py` forwards that raw execution status into the final graph
+  report `status`, the operator-facing report contract drifts away from the
+  schema and the higher-level queue routing semantics
+
+Current safe rule:
+- preserve the raw task-graph execution outcome under
+  `run.graph_execution_status`
+- normalize the top-level graph report `status` to `completed` or `failed` for
+  the operator-facing contract

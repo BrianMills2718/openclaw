@@ -258,3 +258,41 @@ Verification:
 
 - `python -m pytest -q tests/test_run_task_reports.py tests/test_run_task_review_gate.py`
 - `python -m pytest -q tests/test_runtime_bootstrap_imports.py tests/test_run_task_delivery_audit.py tests/test_run_task_reports.py tests/test_task_planner_delivery_modes.py`
+
+## 2026-04-05 07:09 PT - First Live Plan #3 Proof Failed Truthfully
+
+Phase 6 produced a real failed report artifact, not a transport or routing
+stall.
+
+Proof artifact:
+
+- `/tmp/openclaw-proof-plan3-task-results-live/reports/planner-2026-04-05-add-failing-task-id-to-report_20260405T140726Z.json`
+
+Observed truth:
+
+- top-level report status was `failed`
+- the report included the new bounded `task_results` summaries without any
+  debug provenance sidecar
+- the review artifact clearly rejected the code task with a specific finding
+  about the failure-path test shape
+
+Exact review finding:
+
+- the proof task added `run.first_failed_task_id`, but its new test modeled a
+  graph failure as `ExecutionReport.status="failed"`
+- the real task-graph runtime uses `ExecutionReport.status="partial"` when a
+  graph fails after at least one wave has already run
+- that meant the new proof task was not actually validating the production
+  failure path
+
+Corrective action:
+
+- normalize any non-completed graph execution to final operator-facing
+  `status="failed"`
+- keep the raw task-graph outcome under `run.graph_execution_status`
+- update the failure-path report test to use the real `partial` execution state
+
+Verification after the corrective patch:
+
+- `python -m pytest -q tests/test_run_task_reports.py tests/test_run_task_review_gate.py`
+- `python -m pytest -q tests/test_runtime_bootstrap_imports.py tests/test_run_task_delivery_audit.py tests/test_run_task_reports.py tests/test_task_planner_delivery_modes.py`

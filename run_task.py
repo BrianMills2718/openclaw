@@ -1849,12 +1849,13 @@ async def _run_graph_task(task_path: Path) -> bool:
             for p in analysis.proposals:
                 log.info("  [%s] %s: %s for %s", p.risk, p.category, p.action, p.task_id)
 
-        final_status = report.status
-        destination = "completed" if report.status == "completed" else "failed"
-        failure_codes: list[str] = [] if report.status == "completed" else ["OPENCLAW_GRAPH_RUN_FAILED"]
-        primary_failure_class = "none" if report.status == "completed" else "reasoning"
+        graph_execution_status = str(report.status)
+        final_status = "completed" if graph_execution_status == "completed" else "failed"
+        destination = "completed" if final_status == "completed" else "failed"
+        failure_codes: list[str] = [] if final_status == "completed" else ["OPENCLAW_GRAPH_RUN_FAILED"]
+        primary_failure_class = "none" if final_status == "completed" else "reasoning"
 
-        if report.status == "completed" and graph_metadata.get("delivery_mode") == "review_cycle":
+        if graph_execution_status == "completed" and graph_metadata.get("delivery_mode") == "review_cycle":
             final_review_path = Path(str(graph_metadata.get("final_review_json", ""))).expanduser()
             review_gate = _evaluate_review_gate(final_review_path)
             report_payload["review_gate"] = review_gate
@@ -1920,12 +1921,12 @@ async def _run_graph_task(task_path: Path) -> bool:
             decision_stage="routing",
             selected_action=f"route_to_{destination}",
             decision_reason=(
-                f"graph execution status={report.status}; final routed status={final_status}"
+                f"graph execution status={graph_execution_status}; final routed status={final_status}"
             ),
             evidence_refs=[] if final_status == "completed" else failure_codes,
         )
         run_summary = {
-            "graph_execution_status": report.status,
+            "graph_execution_status": graph_execution_status,
             "total_cost_usd": report.total_cost_usd,
             "total_duration_s": report.total_duration_s,
             "waves_completed": report.waves_completed,
@@ -1941,8 +1942,8 @@ async def _run_graph_task(task_path: Path) -> bool:
         report_payload["finished_at"] = datetime.now(timezone.utc).isoformat()
         _write_task_report(graph_ref, report_payload)
 
-        log.info("=== Graph %s: %s (cost=$%.4f, duration=%.1fs, %d/%d waves) ===",
-                 report.status.upper(), graph.meta.id,
+        log.info("=== Graph %s (execution=%s): %s (cost=$%.4f, duration=%.1fs, %d/%d waves) ===",
+                 final_status.upper(), graph_execution_status.upper(), graph.meta.id,
                  report.total_cost_usd, report.total_duration_s,
                  report.waves_completed, report.waves_total)
 

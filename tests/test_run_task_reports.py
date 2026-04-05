@@ -150,7 +150,7 @@ def test_graph_report_exposes_failed_task_error_directly(
 
     async def _run_graph(*args, **kwargs):
         return SimpleNamespace(
-            status="failed",
+            status="partial",
             total_cost_usd=0.1,
             total_duration_s=1.0,
             waves_completed=1,
@@ -193,6 +193,7 @@ def test_graph_report_exposes_failed_task_error_directly(
 
     assert completed is False
     assert reports[-1]["status"] == "failed"
+    assert reports[-1]["run"]["graph_execution_status"] == "partial"
     assert reports[-1]["run"]["first_failed_task_id"] == "implement_r1"
     assert reports[-1]["task_results"][0]["task_id"] == "implement_r1"
     assert reports[-1]["task_results"][0]["error"] == "validator failed: implementation.md missing"
