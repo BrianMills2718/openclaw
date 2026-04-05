@@ -184,3 +184,141 @@ If a hard stop occurs:
 3. Mainline may have moved since the proof branches were pushed.
    Safe default:
    - merge in dedicated integration worktrees, resolve conflicts there, and re-run the minimal truthful verification before any push
+
+## 2026-04-05 06:41 PT - Merge Phases Completed Truthfully
+
+Phase 2 and Phase 3 are complete.
+
+Verified merge and verification results:
+
+- `llm_client` merged to `main` from dedicated integration worktree
+  `merge-codex-transport-main-20260405`
+- `llm_client` selected verification passed:
+  `python -m pytest -q tests/test_agents.py -k codex_mcp`
+- `openclaw` merged to `main` from dedicated integration worktree
+  `merge-e2e-planner-main-20260405`
+- merge-time targeted verification passed:
+  `python -m pytest -q tests/test_runtime_bootstrap_imports.py tests/test_run_task_delivery_audit.py tests/test_run_task_reports.py tests/test_task_planner_delivery_modes.py`
+- prior fresh proof report reconfirmed:
+  `/tmp/openclaw-proof-readme-fresh/reports/planner-2026-04-05-document-cli-default-readme_20260405T053153Z.json`
+  with:
+  - `status = completed`
+  - `review_gate.passed = true`
+  - `commit_evidence.passed = true`
+
+Important integration finding:
+
+- the branch merge surfaced one stale extraction assumption:
+  `scripts.meta.task_graph` and `scripts.meta.analyzer` were still trying to
+  load `project-meta/scripts/meta/*`
+- merged mainline verification forced the truthful correction: both shims now
+  load the repo-local top-level runtime modules instead
+
+Operational caveat for next proof:
+
+- use `~/projects/llm_client_worktrees/merge-codex-transport-main-20260405`
+  as the `llm_client` source for live proofs
+- do not use the canonical `~/projects/llm_client` checkout yet because it has
+  unrelated local drift outside the approved merge
+
+## 2026-04-05 06:49 PT - Phase 4 Baseline Confirmed
+
+Phase 4 is complete.
+
+Verified state:
+
+- fresh implementation worktree created from merged `openclaw/main`:
+  `plan-3-task-results-observability`
+- kickoff suite passed on merged mainline before any Plan #3 edits:
+  `python -m pytest -q tests/test_run_task_reports.py tests/test_run_task_review_gate.py`
+
+## 2026-04-05 07:02 PT - Plan #3 Implementation Slice Verified
+
+Phase 5 implementation is in progress, with the first verified increment ready
+to commit.
+
+Implemented and verified:
+
+- normal graph reports now carry additive bounded `task_results` summaries
+- each task summary includes:
+  - `task_id`
+  - `status`
+  - `wave`
+  - `model_selected`
+  - `requested_model`
+  - `resolved_model`
+  - `duration_s`
+  - `error`
+  - compact `validation_summary`
+- report-path tests now assert both:
+  - successful graph reports expose all task statuses
+  - failed graph reports expose the failing task id and error directly
+
+Verification:
+
+- `python -m pytest -q tests/test_run_task_reports.py tests/test_run_task_review_gate.py`
+- `python -m pytest -q tests/test_runtime_bootstrap_imports.py tests/test_run_task_delivery_audit.py tests/test_run_task_reports.py tests/test_task_planner_delivery_modes.py`
+
+## 2026-04-05 07:09 PT - First Live Plan #3 Proof Failed Truthfully
+
+Phase 6 produced a real failed report artifact, not a transport or routing
+stall.
+
+Proof artifact:
+
+- `/tmp/openclaw-proof-plan3-task-results-live/reports/planner-2026-04-05-add-failing-task-id-to-report_20260405T140726Z.json`
+
+Observed truth:
+
+- top-level report status was `failed`
+- the report included the new bounded `task_results` summaries without any
+  debug provenance sidecar
+- the review artifact clearly rejected the code task with a specific finding
+  about the failure-path test shape
+
+Exact review finding:
+
+- the proof task added `run.first_failed_task_id`, but its new test modeled a
+  graph failure as `ExecutionReport.status="failed"`
+- the real task-graph runtime uses `ExecutionReport.status="partial"` when a
+  graph fails after at least one wave has already run
+- that meant the new proof task was not actually validating the production
+  failure path
+
+Corrective action:
+
+- normalize any non-completed graph execution to final operator-facing
+  `status="failed"`
+- keep the raw task-graph outcome under `run.graph_execution_status`
+- update the failure-path report test to use the real `partial` execution state
+
+Verification after the corrective patch:
+
+- `python -m pytest -q tests/test_run_task_reports.py tests/test_run_task_review_gate.py`
+- `python -m pytest -q tests/test_runtime_bootstrap_imports.py tests/test_run_task_delivery_audit.py tests/test_run_task_reports.py tests/test_task_planner_delivery_modes.py`
+
+## 2026-04-05 07:17 PT - Fresh Plan #3 Proof Completed
+
+Phase 6 is complete.
+
+Successful proof artifact:
+
+- `/tmp/openclaw-proof-plan3-task-wave-live/reports/planner-2026-04-05-add-failing-task-wave-to-report-triage_20260405T141713Z.json`
+
+Truth conditions verified from the final report:
+
+- `status = completed`
+- `destination = completed`
+- `review_gate.passed = true`
+- `commit_evidence.passed = true`
+- `task_results` present with three bounded task summaries
+
+Proof-specific code landed by the reviewed lane:
+
+- `242b0ed` `[Plan #3] Add failing task wave triage to graph reports`
+- `647c13d` `[Plan #3] Add round 1 failing-wave implementation note`
+
+Post-proof branch verification:
+
+- `python -m pytest -q tests/test_run_task_reports.py tests/test_run_task_review_gate.py`
+- `python -m pytest -q tests/test_runtime_bootstrap_imports.py tests/test_run_task_delivery_audit.py tests/test_run_task_reports.py tests/test_task_planner_delivery_modes.py`

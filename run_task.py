@@ -1057,6 +1057,171 @@ def _record_decision_event(
     events.append(event)
 
 
+def _task_result_field(task_result: Any, field: str, default: Any = None) -> Any:
+    """Read one task-result field from either a model instance or plain dict."""
+
+    if isinstance(task_result, dict):
+        return task_result.get(field, default)
+    return getattr(task_result, field, default)
+
+
+def _task_result_status(task_result: Any) -> str:
+    """Normalize task-result status values for reports."""
+
+    status = _task_result_field(task_result, "status")
+    if hasattr(status, "value"):
+        return str(status.value)
+    return str(status or "unknown")
+
+
+def _validation_failure_ref(validation_result: Any) -> str:
+    """Collapse one validation result into a compact failure reference."""
+
+    if isinstance(validation_result, dict):
+        validator_type = (
+            validation_result.get("validator")
+            or validation_result.get("type")
+            or validation_result.get("validator_type")
+            or validation_result.get("check")
+            or "validator"
+        )
+        detail = (
+            validation_result.get("path")
+            or validation_result.get("command")
+            or validation_result.get("message")
+            or validation_result.get("error")
+            or ""
+        )
+    else:
+        validator_type = (
+            getattr(validation_result, "validator", None)
+            or getattr(validation_result, "type", None)
+            or getattr(validation_result, "validator_type", None)
+            or getattr(validation_result, "check", None)
+            or "validator"
+        )
+        detail = (
+            getattr(validation_result, "path", None)
+            or getattr(validation_result, "command", None)
+            or getattr(validation_result, "message", None)
+            or getattr(validation_result, "error", None)
+            or ""
+        )
+    return f"{validator_type}:{detail}" if detail else str(validator_type)
+
+
+def _validation_result_passed(validation_result: Any) -> bool:
+    """Return whether one validation result passed."""
+
+    if isinstance(validation_result, dict):
+        return bool(validation_result.get("passed"))
+    return bool(getattr(validation_result, "passed", False))
+
+
+def _summarize_validation_results(validation_results: Any) -> dict[str, Any]:
+    """Collapse validator output into a bounded operator-facing summary."""
+
+    if not isinstance(validation_results, list):
+        validation_results = []
+
+    passed_count = 0
+    failures: list[str] = []
+    for validation_result in validation_results:
+        if _validation_result_passed(validation_result):
+            passed_count += 1
+            continue
+        failures.append(_validation_failure_ref(validation_result))
+
+    validator_count = len(validation_results)
+    failed_count = len(failures)
+    return {
+        "validator_count": validator_count,
+        "passed_count": passed_count,
+        "failed_count": failed_count,
+        "all_passed": failed_count == 0,
+        "failure_refs": failures,
+    }
+
+
+def _summarize_graph_task_result(task_result: Any) -> dict[str, Any]:
+    """Return the bounded per-task summary included in graph reports."""
+
+    return {
+        "task_id": str(_task_result_field(task_result, "task_id", "")),
+        "status": _task_result_status(task_result),
+        "wave": int(_task_result_field(task_result, "wave", 0) or 0),
+        "model_selected": _task_result_field(task_result, "model_selected"),
+        "requested_model": _task_result_field(task_result, "requested_model"),
+        "resolved_model": _task_result_field(task_result, "resolved_model"),
+        "duration_s": float(_task_result_field(task_result, "duration_s", 0.0) or 0.0),
+        "error": _task_result_field(task_result, "error"),
+        "validation_summary": _summarize_validation_results(
+            _task_result_field(task_result, "validation_results", []),
+        ),
+    }
+
+
+def _debug_graph_task_result(task_result: Any) -> dict[str, Any]:
+    """Return a provenance payload for one task result."""
+
+    if hasattr(task_result, "model_dump"):
+        return task_result.model_dump()
+    return _summarize_graph_task_result(task_result)
+
+
+def _summarize_graph_task_results(task_results: Any) -> list[dict[str, Any]]:
+    """Return bounded task summaries for graph reports."""
+
+    if not isinstance(task_results, list):
+        return []
+    return [_summarize_graph_task_result(task_result) for task_result in task_results]
+
+
+def _first_failed_graph_task_id(task_result_summaries: Any) -> str | None:
+    """Return the first failed task id for run-level graph triage."""
+
+    if not isinstance(task_result_summaries, list):
+        return None
+
+    for task_result in task_result_summaries:
+        if not isinstance(task_result, dict):
+            continue
+        if str(task_result.get("status") or "") != "failed":
+            continue
+        task_id = str(task_result.get("task_id") or "").strip()
+        if task_id:
+            return task_id
+    return None
+
+
+def _failing_graph_task_waves(task_result_summaries: Any) -> dict[str, Any]:
+    """Return the bounded failing-wave summary for run-level graph triage."""
+
+    if not isinstance(task_result_summaries, list):
+        return {"count": 0, "waves": []}
+
+    failing_waves: set[int] = set()
+    for task_result in task_result_summaries:
+        if not isinstance(task_result, dict):
+            continue
+        if str(task_result.get("status") or "") != "failed":
+            continue
+        wave = task_result.get("wave")
+        if isinstance(wave, bool):
+            continue
+        try:
+            wave_index = int(wave)
+        except (TypeError, ValueError):
+            continue
+        if wave_index >= 0:
+            failing_waves.add(wave_index)
+
+    return {
+        "count": len(failing_waves),
+        "waves": sorted(failing_waves),
+    }
+
+
 def _run_flat_preflight(task: TaskSpec) -> dict[str, Any]:
     """Deterministic preflight checks for flat tasks."""
     checks: list[dict[str, Any]] = []
@@ -1582,6 +1747,7 @@ async def _run_graph_task(task_path: Path) -> bool:
         "graph_id": graph_ref,
         "status": "running",
         "started_at": datetime.now(timezone.utc).isoformat(),
+        "task_results": [],
     }
     _apply_delivery_contract_metadata(
         report_payload,
@@ -1672,18 +1838,20 @@ async def _run_graph_task(task_path: Path) -> bool:
             "graph_finished",
             graph_id=graph.meta.id,
             report_status=report.status,
-            task_results=[tr.model_dump() for tr in report.task_results],
+            task_results=[_debug_graph_task_result(tr) for tr in report.task_results],
         )
+        task_result_summaries = _summarize_graph_task_results(report.task_results)
+        report_payload["task_results"] = task_result_summaries
 
         # Log per-task costs to OpenClaw cost_log
         for tr in report.task_results:
             _log_cost(
-                task_id=f"{graph.meta.id}/{tr.task_id}",
-                agent=tr.model_selected or "scripted",
-                model=tr.model_selected or "",
-                cost_usd=tr.cost_usd,
-                duration_s=tr.duration_s,
-                status=tr.status.value,
+                task_id=f"{graph.meta.id}/{_task_result_field(tr, 'task_id', '')}",
+                agent=_task_result_field(tr, "model_selected") or "scripted",
+                model=_task_result_field(tr, "model_selected") or "",
+                cost_usd=float(_task_result_field(tr, "cost_usd", 0.0) or 0.0),
+                duration_s=float(_task_result_field(tr, "duration_s", 0.0) or 0.0),
+                status=_task_result_status(tr),
             )
 
         # Run self-improvement analyzer
@@ -1709,12 +1877,13 @@ async def _run_graph_task(task_path: Path) -> bool:
             for p in analysis.proposals:
                 log.info("  [%s] %s: %s for %s", p.risk, p.category, p.action, p.task_id)
 
-        final_status = report.status
-        destination = "completed" if report.status == "completed" else "failed"
-        failure_codes: list[str] = [] if report.status == "completed" else ["OPENCLAW_GRAPH_RUN_FAILED"]
-        primary_failure_class = "none" if report.status == "completed" else "reasoning"
+        graph_execution_status = str(report.status)
+        final_status = "completed" if graph_execution_status == "completed" else "failed"
+        destination = "completed" if final_status == "completed" else "failed"
+        failure_codes: list[str] = [] if final_status == "completed" else ["OPENCLAW_GRAPH_RUN_FAILED"]
+        primary_failure_class = "none" if final_status == "completed" else "reasoning"
 
-        if report.status == "completed" and graph_metadata.get("delivery_mode") == "review_cycle":
+        if graph_execution_status == "completed" and graph_metadata.get("delivery_mode") == "review_cycle":
             final_review_path = Path(str(graph_metadata.get("final_review_json", ""))).expanduser()
             review_gate = _evaluate_review_gate(final_review_path)
             report_payload["review_gate"] = review_gate
@@ -1780,25 +1949,30 @@ async def _run_graph_task(task_path: Path) -> bool:
             decision_stage="routing",
             selected_action=f"route_to_{destination}",
             decision_reason=(
-                f"graph execution status={report.status}; final routed status={final_status}"
+                f"graph execution status={graph_execution_status}; final routed status={final_status}"
             ),
             evidence_refs=[] if final_status == "completed" else failure_codes,
         )
-        report_payload["run"] = {
-            "graph_execution_status": report.status,
+        run_summary = {
+            "graph_execution_status": graph_execution_status,
             "total_cost_usd": report.total_cost_usd,
             "total_duration_s": report.total_duration_s,
             "waves_completed": report.waves_completed,
             "waves_total": report.waves_total,
             "task_results_count": len(report.task_results),
         }
+        first_failed_task_id = _first_failed_graph_task_id(task_result_summaries)
+        if first_failed_task_id:
+            run_summary["first_failed_task_id"] = first_failed_task_id
+        run_summary["failing_task_waves"] = _failing_graph_task_waves(task_result_summaries)
+        report_payload["run"] = run_summary
         report_payload["primary_failure_class"] = primary_failure_class
         report_payload["failure_event_codes"] = failure_codes
         report_payload["finished_at"] = datetime.now(timezone.utc).isoformat()
         _write_task_report(graph_ref, report_payload)
 
-        log.info("=== Graph %s: %s (cost=$%.4f, duration=%.1fs, %d/%d waves) ===",
-                 report.status.upper(), graph.meta.id,
+        log.info("=== Graph %s (execution=%s): %s (cost=$%.4f, duration=%.1fs, %d/%d waves) ===",
+                 final_status.upper(), graph_execution_status.upper(), graph.meta.id,
                  report.total_cost_usd, report.total_duration_s,
                  report.waves_completed, report.waves_total)
 

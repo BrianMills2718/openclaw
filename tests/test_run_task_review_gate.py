@@ -14,7 +14,36 @@ import yaml
 import run_task
 
 
-def _install_fake_graph_modules(monkeypatch, *, status: str = "completed") -> None:
+def _task_result(
+    *,
+    task_id: str,
+    status: str,
+    wave: int,
+    validation_results: list[dict[str, object]] | None = None,
+    error: str | None = None,
+) -> SimpleNamespace:
+    """Build one fake graph task result for review-gate tests."""
+
+    return SimpleNamespace(
+        task_id=task_id,
+        status=status,
+        wave=wave,
+        model_selected="codex",
+        requested_model="codex",
+        resolved_model="codex",
+        duration_s=1.0,
+        cost_usd=0.1,
+        validation_results=validation_results or [],
+        error=error,
+    )
+
+
+def _install_fake_graph_modules(
+    monkeypatch,
+    *,
+    status: str = "completed",
+    task_results: list[SimpleNamespace] | None = None,
+) -> None:
     """Provide fake graph runner modules so _run_graph_task stays unit-testable."""
 
     analyzer_module = types.ModuleType("scripts.meta.analyzer")
@@ -34,7 +63,7 @@ def _install_fake_graph_modules(monkeypatch, *, status: str = "completed") -> No
             total_duration_s=1.0,
             waves_completed=3,
             waves_total=3,
-            task_results=[],
+            task_results=task_results or [],
         )
 
     task_graph_module.run_graph = _run_graph
@@ -76,7 +105,13 @@ def test_graph_routes_to_failed_when_final_review_status_is_needs_changes(
 ) -> None:
     """Review status must semantically approve the graph before completion."""
 
-    _install_fake_graph_modules(monkeypatch)
+    _install_fake_graph_modules(
+        monkeypatch,
+        task_results=[
+            _task_result(task_id="implement_r1", status="completed", wave=0),
+            _task_result(task_id="review_r1", status="completed", wave=1),
+        ],
+    )
     task_path = _graph_file(tmp_path, review_status="needs_changes")
     reports: list[dict[str, object]] = []
 
@@ -93,6 +128,7 @@ def test_graph_routes_to_failed_when_final_review_status_is_needs_changes(
     assert reports[-1]["status"] == "failed"
     assert reports[-1]["failure_event_codes"] == ["OPENCLAW_GRAPH_REVIEW_FAILED"]
     assert reports[-1]["review_gate"]["status"] == "needs_changes"
+    assert reports[-1]["task_results"][1]["task_id"] == "review_r1"
 
 
 def test_graph_routes_to_failed_when_commit_missing_after_review_pass(
@@ -101,7 +137,13 @@ def test_graph_routes_to_failed_when_commit_missing_after_review_pass(
 ) -> None:
     """Review pass alone is not enough for planner-generated review-cycle graphs."""
 
-    _install_fake_graph_modules(monkeypatch)
+    _install_fake_graph_modules(
+        monkeypatch,
+        task_results=[
+            _task_result(task_id="implement_r1", status="completed", wave=0),
+            _task_result(task_id="review_r1", status="completed", wave=1),
+        ],
+    )
     task_path = _graph_file(tmp_path, review_status="pass")
     reports: list[dict[str, object]] = []
 
@@ -127,6 +169,7 @@ def test_graph_routes_to_failed_when_commit_missing_after_review_pass(
     assert reports[-1]["status"] == "failed"
     assert reports[-1]["failure_event_codes"] == ["OPENCLAW_GRAPH_COMMIT_MISSING"]
     assert reports[-1]["commit_evidence"]["passed"] is False
+    assert reports[-1]["task_results"][0]["status"] == "completed"
 
 
 def test_graph_routes_to_completed_when_review_pass_and_commit_present(
@@ -135,7 +178,23 @@ def test_graph_routes_to_completed_when_review_pass_and_commit_present(
 ) -> None:
     """Planner-generated review-cycle graphs complete only with both gates satisfied."""
 
-    _install_fake_graph_modules(monkeypatch)
+    _install_fake_graph_modules(
+        monkeypatch,
+        task_results=[
+            _task_result(
+                task_id="implement_r1",
+                status="completed",
+                wave=0,
+                validation_results=[{"passed": True, "type": "file_exists", "path": "implementation.md"}],
+            ),
+            _task_result(
+                task_id="review_r1",
+                status="completed",
+                wave=1,
+                validation_results=[{"passed": True, "type": "json_schema", "path": "review.json"}],
+            ),
+        ],
+    )
     task_path = _graph_file(tmp_path, review_status="pass")
     reports: list[dict[str, object]] = []
 
@@ -162,3 +221,5 @@ def test_graph_routes_to_completed_when_review_pass_and_commit_present(
     assert reports[-1]["status"] == "completed"
     assert reports[-1]["review_gate"]["passed"] is True
     assert reports[-1]["commit_evidence"]["commit_detected"] is True
+    assert len(reports[-1]["task_results"]) == 2
+    assert reports[-1]["task_results"][0]["validation_summary"]["all_passed"] is True
