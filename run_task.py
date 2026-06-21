@@ -23,6 +23,7 @@ import importlib
 import json
 import logging
 import os
+import subprocess
 import shutil
 import sys
 import time
@@ -633,7 +634,7 @@ def _run_validation(task: TaskSpec, pre_status: str = "") -> tuple[bool, str]:
     post_status = git_result.stdout.strip()
     new_changes = set(post_status.splitlines()) - set(pre_status.splitlines())
     if new_changes:
-        checks_passed.append(f"Agent produced changes:\n" + "\n".join(new_changes))
+        checks_passed.append("Agent produced changes:\n" + "\n".join(new_changes))
     else:
         checks_passed.append("No new uncommitted changes")
 
@@ -802,6 +803,205 @@ def _evaluate_review_gate(review_json_path: Path) -> dict[str, Any]:
 
     gate["reason"] = "review status did not approve the graph"
     return gate
+
+
+def _review_cycle_run_dir(task_payload: dict[str, Any]) -> Path:
+    """Resolve the llm_client review-cycle run directory from a task payload."""
+
+    raw_out_dir = task_payload.get("out_dir")
+    if isinstance(raw_out_dir, str) and raw_out_dir.strip():
+        return Path(raw_out_dir).expanduser()
+    workspace_path = Path(str(task_payload["workspace_path"])).expanduser()
+    task_id = str(task_payload["task_id"])
+    return workspace_path / "runs" / "review-cycle" / task_id
+
+
+def _review_cycle_sidecar_payload(
+    *,
+    command: list[str],
+    returncode: int,
+    task_file: Path,
+    run_dir: Path,
+    signoff_path: Path,
+    stdout: str,
+    stderr: str,
+) -> dict[str, Any]:
+    """Build the OpenClaw sidecar that points to llm_client artifacts."""
+
+    signoff: dict[str, Any] = {}
+    if signoff_path.is_file():
+        try:
+            loaded = json.loads(signoff_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                signoff = loaded
+        except json.JSONDecodeError:
+            signoff = {"_error": "signoff.json was not valid JSON"}
+    artifacts = {
+        "signoff": str(signoff_path),
+        "budget_ledger": str(run_dir / "budget_ledger.json"),
+        "discussion_queue": str(run_dir / "discussion_queue.json"),
+        "preflight_status": str(run_dir / "preflight_status.txt"),
+    }
+    artifact_index = signoff.get("artifact_index")
+    if isinstance(artifact_index, dict):
+        for name, rel_path in artifact_index.items():
+            artifacts[str(name)] = str(run_dir / str(rel_path))
+    return {
+        "schema_version": "openclaw.review_cycle_artifacts.v1",
+        "command": command,
+        "returncode": returncode,
+        "task_file": str(task_file),
+        "run_dir": str(run_dir),
+        "signoff_path": str(signoff_path),
+        "signoff_present": signoff_path.is_file(),
+        "signoff": signoff,
+        "artifacts": artifacts,
+        "stdout_tail": stdout[-4000:],
+        "stderr_tail": stderr[-4000:],
+    }
+
+
+async def _run_llm_review_cycle_graph_task(
+    *,
+    active_path: Path,
+    graph_ref: str,
+    graph_metadata: dict[str, Any],
+    report_payload: dict[str, Any],
+) -> bool:
+    """Run a graph task that delegates semantics to `llm_client review-cycle`."""
+
+    task_file_raw = graph_metadata.get("review_cycle_task_file")
+    if not isinstance(task_file_raw, str) or not task_file_raw.strip():
+        report_payload["status"] = "failed_preflight"
+        report_payload["destination"] = "failed"
+        report_payload["primary_failure_class"] = "composability"
+        report_payload["failure_event_codes"] = ["OPENCLAW_REVIEW_CYCLE_TASK_FILE_MISSING"]
+        report_payload["finished_at"] = datetime.now(timezone.utc).isoformat()
+        _move_task(active_path, "failed")
+        _write_task_report(graph_ref, report_payload)
+        return False
+
+    task_file = Path(task_file_raw).expanduser()
+    preflight = {
+        "passed": task_file.is_file(),
+        "checks": [{"check": "review_cycle_task_file_exists", "passed": task_file.is_file()}],
+        "failures": [],
+        "failure_event_codes": [],
+        "primary_failure_class": "none",
+    }
+    if not task_file.is_file():
+        preflight["failures"].append({
+            "error_code": "OPENCLAW_REVIEW_CYCLE_TASK_FILE_MISSING",
+            "message": f"review-cycle task file not found: {task_file}",
+        })
+        preflight["failure_event_codes"].append("OPENCLAW_REVIEW_CYCLE_TASK_FILE_MISSING")
+        preflight["primary_failure_class"] = "composability"
+        report_payload["preflight"] = preflight
+        report_payload["status"] = "failed_preflight"
+        report_payload["destination"] = "failed"
+        report_payload["primary_failure_class"] = "composability"
+        report_payload["failure_event_codes"] = preflight["failure_event_codes"]
+        report_payload["finished_at"] = datetime.now(timezone.utc).isoformat()
+        _move_task(active_path, "failed")
+        _write_task_report(graph_ref, report_payload)
+        return False
+    report_payload["preflight"] = preflight
+
+    task_payload = json.loads(task_file.read_text(encoding="utf-8"))
+    if not isinstance(task_payload, dict):
+        raise ValueError("review-cycle task file must contain a JSON object")
+    run_dir = _review_cycle_run_dir(task_payload)
+    signoff_path = run_dir / "signoff.json"
+    sidecar_raw = graph_metadata.get("review_cycle_artifacts_path")
+    sidecar_path = (
+        Path(sidecar_raw).expanduser()
+        if isinstance(sidecar_raw, str) and sidecar_raw.strip()
+        else run_dir / "review_cycle_artifacts.json"
+    )
+    target_repo = Path(str(graph_metadata.get("target_repo_path") or task_payload.get("workspace_path", "."))).expanduser()
+    command = [sys.executable, "-m", "llm_client", "review-cycle", "--task-file", str(task_file)]
+
+    started = time.monotonic()
+    _record_decision_event(
+        report_payload,
+        decision_stage="execution",
+        selected_action="run_llm_client_review_cycle",
+        decision_reason="delegating review semantics to llm_client review-cycle",
+        evidence_refs=[str(task_file)],
+    )
+    completed = await asyncio.to_thread(
+        subprocess.run,
+        command,
+        cwd=target_repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    duration = time.monotonic() - started
+    sidecar = _review_cycle_sidecar_payload(
+        command=command,
+        returncode=completed.returncode,
+        task_file=task_file,
+        run_dir=run_dir,
+        signoff_path=signoff_path,
+        stdout=completed.stdout or "",
+        stderr=completed.stderr or "",
+    )
+    sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+    sidecar_path.write_text(json.dumps(sidecar, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    passed = completed.returncode == 0 and signoff_path.is_file()
+    destination = "completed" if passed else "failed"
+    final_status = "completed" if passed else "failed"
+    failure_codes = [] if passed else ["OPENCLAW_REVIEW_CYCLE_FAILED"]
+    report_payload["review_cycle_artifacts"] = {
+        "path": str(sidecar_path),
+        "signoff_path": str(signoff_path),
+        "signoff_present": signoff_path.is_file(),
+    }
+    report_payload["task_results"] = [{
+        "task_id": "llm_client_review_cycle",
+        "status": "completed" if passed else "failed",
+        "wave": 0,
+        "model_selected": "llm_client.review-cycle",
+        "requested_model": None,
+        "resolved_model": None,
+        "duration_s": round(duration, 2),
+        "error": None if passed else (completed.stderr or completed.stdout or "review-cycle failed")[-1000:],
+        "validation_summary": {
+            "validator_count": 1,
+            "passed_count": 1 if signoff_path.is_file() else 0,
+            "failed_count": 0 if signoff_path.is_file() else 1,
+            "all_passed": signoff_path.is_file(),
+            "failure_refs": [] if signoff_path.is_file() else [f"file_exists:{signoff_path}"],
+        },
+    }]
+    report_payload["run"] = {
+        "graph_execution_status": "completed" if passed else "failed",
+        "total_cost_usd": float(sidecar.get("signoff", {}).get("budget_spent_usd", 0.0) or 0.0),
+        "total_duration_s": round(duration, 2),
+        "waves_completed": 1 if passed else 0,
+        "waves_total": 1,
+        "task_results_count": 1,
+        "failing_task_waves": {"count": 0 if passed else 1, "waves": [] if passed else [0]},
+    }
+    if not passed:
+        report_payload["run"]["first_failed_task_id"] = "llm_client_review_cycle"
+    report_payload["status"] = final_status
+    report_payload["destination"] = destination
+    report_payload["primary_failure_class"] = "none" if passed else "reasoning"
+    report_payload["failure_event_codes"] = failure_codes
+    report_payload["finished_at"] = datetime.now(timezone.utc).isoformat()
+    _record_decision_event(
+        report_payload,
+        decision_stage="routing",
+        selected_action=f"route_to_{destination}",
+        decision_reason="llm_client review-cycle command completed" if passed else "llm_client review-cycle command failed",
+        evidence_refs=[str(sidecar_path)] if passed else failure_codes,
+    )
+    _move_task(active_path, destination)
+    _write_task_report(graph_ref, report_payload)
+    return passed
 
 
 def _review_gate_failure_code(gate: dict[str, Any]) -> str:
@@ -1786,6 +1986,14 @@ async def _run_graph_task(task_path: Path) -> bool:
     # Move to active
     active_path = _move_task(task_path, "active")
 
+    if graph_metadata.get("delivery_mode") == "llm_review_cycle":
+        return await _run_llm_review_cycle_graph_task(
+            active_path=active_path,
+            graph_ref=graph_ref,
+            graph_metadata=graph_metadata,
+            report_payload=report_payload,
+        )
+
     try:
         graph = load_graph(active_path)
         graph_ref = graph.meta.id
@@ -2007,7 +2215,7 @@ async def _run_graph_task(task_path: Path) -> bool:
 
 def _dry_run_graph(task_path: Path) -> None:
     """Show what a task graph would do without executing."""
-    from scripts.meta.task_graph import load_graph, run_graph
+    from scripts.meta.task_graph import load_graph
 
     graph = load_graph(task_path)
     mcp_configs = _load_mcp_registry()
@@ -2773,7 +2981,7 @@ def main() -> None:
             print(f"Project: {task.project}")
             print(f"Priority: {task.priority}")
             print(f"Constraints: max_turns={task.constraints.max_turns}, budget=${task.constraints.max_budget_usd}")
-            print(f"\n--- Prompt ---\n")
+            print("\n--- Prompt ---\n")
             print(_build_prompt(task))
         return
 
