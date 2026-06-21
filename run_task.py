@@ -1986,15 +1986,15 @@ async def _run_graph_task(task_path: Path) -> bool:
     # Move to active
     active_path = _move_task(task_path, "active")
 
-    if graph_metadata.get("delivery_mode") == "llm_review_cycle":
-        return await _run_llm_review_cycle_graph_task(
-            active_path=active_path,
-            graph_ref=graph_ref,
-            graph_metadata=graph_metadata,
-            report_payload=report_payload,
-        )
-
     try:
+        if graph_metadata.get("delivery_mode") == "llm_review_cycle":
+            return await _run_llm_review_cycle_graph_task(
+                active_path=active_path,
+                graph_ref=graph_ref,
+                graph_metadata=graph_metadata,
+                report_payload=report_payload,
+            )
+
         graph = load_graph(active_path)
         graph_ref = graph.meta.id
         report_payload["graph_id"] = graph_ref
