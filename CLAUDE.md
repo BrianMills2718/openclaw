@@ -11,6 +11,7 @@ to make project-meta documentation-focused.
 - `run_task.py` — Queue runner with `--loop` supervisor mode
 - `task_planner.py` — Goal-aware task generator
 - `launch_review_cycle.py` — Review cycle DAG launcher
+- `launch_llm_review_cycle.py` — OpenClaw wrapper for `llm_client review-cycle`
 - `prompts/task_planner.yaml` — System/user prompts for task generation
 - `schemas/` — JSON schemas for task reports
 - `review_cycle.defaults.yaml` — Conservative defaults
