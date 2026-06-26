@@ -1,0 +1,17 @@
+---
+doc-role: wiki-manifest
+freshness: 2026-06-25
+---
+
+# Wiki Manifest — OpenClaw Discord Bot
+
+id: moltbot
+portfolio_tier: personal
+description: >
+  OpenClaw workspace: Discord bot + task runner, planner, review cycle (runtime imported from project-meta/ops/openclaw 2026-04-01)
+
+sources:
+  - path: ../README.md
+    role: overview
+  - path: ../CLAUDE.md
+    role: instructions
